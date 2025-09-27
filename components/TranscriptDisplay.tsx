@@ -12,10 +12,9 @@ interface TranscriptDisplayProps {
   isExpanded: boolean;
   isClickable: boolean;
   onToggle: () => void;
-  audioUrl?: string | null;
 }
 
-export const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({ title, text, isLoading, isComplete, placeholder, renderAsHTML = false, isExpanded, isClickable, onToggle, audioUrl }) => {
+export const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({ title, text, isLoading, isComplete, placeholder, renderAsHTML = false, isExpanded, isClickable, onToggle }) => {
   const [copied, setCopied] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -95,20 +94,13 @@ export const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({ title, tex
                 className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
                 aria-label="Copiar para a área de transferência"
             >
-                {copied ? <CheckIcon className="text-green-500" /> : <ClipboardIcon />}
+                {copied ? <CheckIcon className="w-5 h-5 text-green-500" /> : <ClipboardIcon className="w-5 h-5" />}
             </button>
             )}
             {isClickable && <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />}
         </div>
       </div>
       <div className={`transition-[max-height] duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[150vh]' : 'max-h-0'}`}>
-        {audioUrl && (
-          <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-            <audio controls src={audioUrl} className="w-full h-10">
-              O seu navegador não suporta o elemento de áudio.
-            </audio>
-          </div>
-        )}
         <div className={`p-6 relative ${isExpanded ? 'min-h-[300px]' : ''}`}>
             {isLoading ? (
             <div className="absolute inset-0 flex items-center justify-center bg-white/30 dark:bg-gray-900/50 rounded-b-xl">

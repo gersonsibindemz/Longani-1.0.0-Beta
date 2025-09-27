@@ -1,22 +1,343 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { MenuIcon, CloseIcon, UserIcon, SunIcon, MoonIcon } from './Icons';
+import { Theme, PreferredLanguage } from '../App';
 
-// The logo is now loaded from an external URL to ensure transparency is handled correctly.
-// The URL is Base64 encoded to mask the origin from the source code.
-const encodedLogoUrl = "aHR0cHM6Ly9pLnBvc3RpbWcuY2MvS2o0TnBUWUwvbG9uZ2FuaS1sb2dvLW1haW4ucG5n";
-export const longaniLogoUrl = atob(encodedLogoUrl);
+// The logo is loaded from an external URL.
+export const longaniLogoUrl = "https://i.postimg.cc/Kj4NpTYL/longani-logo-main.png";
 
-export const Header: React.FC = () => {
+interface HeaderProps {
+  page: string;
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  preferredLanguage: PreferredLanguage;
+  setPreferredLanguage: (lang: PreferredLanguage) => void;
+  currentUser: string | null;
+  onLogout: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferredLanguage, setPreferredLanguage, currentUser, onLogout }) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [localTheme, setLocalTheme] = useState(theme);
+  const [localLanguage, setLocalLanguage] = useState(preferredLanguage);
+
+  useEffect(() => {
+    setLocalTheme(theme);
+  }, [theme]);
+  
+  useEffect(() => {
+    setLocalLanguage(preferredLanguage);
+  }, [preferredLanguage]);
+
+  // Effect to lock body scroll when the mobile menu is open.
+  useEffect(() => {
+    if (isMenuOpen) {
+      document.body.classList.add('overflow-hidden');
+    } else {
+      document.body.classList.remove('overflow-hidden');
+    }
+
+    // Cleanup: ensure the class is removed when the component unmounts.
+    return () => {
+      document.body.classList.remove('overflow-hidden');
+    };
+  }, [isMenuOpen]);
+  
+  const handleNavClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    const targetUrl = new URL(event.currentTarget.href);
+    window.location.hash = targetUrl.hash;
+    setIsMenuOpen(false); // Close menu on navigation
+  };
+
+  const toggleMenu = () => {
+    setIsMenuOpen(prev => !prev);
+  }
+
+  const handleSavePreferences = () => {
+    setTheme(localTheme);
+    setPreferredLanguage(localLanguage);
+    setIsMenuOpen(false); // Close menu
+  };
+  
+  const handleLogoutAndCloseMenu = () => {
+    onLogout();
+    setIsMenuOpen(false);
+  };
+
   return (
-    <header className="sticky top-0 z-50 py-4 bg-gray-100/80 dark:bg-gray-900/80 backdrop-blur-lg border-b border-gray-200/60 dark:border-gray-800/60">
-      <div className="container mx-auto px-4 flex items-center justify-center">
-        <img
-          src={longaniLogoUrl}
-          alt="Longani Logo"
-          className="h-28 pointer-events-none select-none"
-          draggable="false"
-          onContextMenu={(e) => e.preventDefault()}
-        />
-      </div>
-    </header>
+    <>
+      <header className="sticky top-0 z-30 py-2 bg-gray-100/75 dark:bg-gray-900/75 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-800/50">
+        <div className="container mx-auto px-4 flex items-center justify-between">
+          {/* Left side: Logo */}
+          <div className="flex-shrink-0">
+            <a href="#/home" onClick={handleNavClick} aria-label="Página inicial do Longani">
+              <img
+                src={longaniLogoUrl}
+                alt="Longani Logo"
+                className="h-16 -my-2 pointer-events-none select-none"
+                draggable="false"
+                onContextMenu={(e) => e.preventDefault()}
+              />
+            </a>
+          </div>
+          
+          {/* Right side: Desktop Menu (hidden on small screens) */}
+          <nav className="hidden sm:block">
+            <ul className="flex items-center gap-6">
+              <li>
+                <a
+                  href="#/home"
+                  onClick={handleNavClick}
+                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                    page === 'home' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  Início
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#/history"
+                  onClick={handleNavClick}
+                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                    page === 'history' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  Minhas Transcrições
+                </a>
+              </li>
+               <li>
+                <a
+                  href="#/recordings"
+                  onClick={handleNavClick}
+                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                    page === 'recordings' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  Gravações
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#/favorites"
+                  onClick={handleNavClick}
+                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                    page === 'favorites' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  Favoritos
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#/translations"
+                  onClick={handleNavClick}
+                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                    page === 'translations' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  Traduções
+                </a>
+              </li>
+              {currentUser ? (
+                <>
+                  <li>
+                    <span className="font-semibold text-gray-800 dark:text-gray-200 cursor-default">
+                      {currentUser}
+                    </span>
+                  </li>
+                  <li>
+                    <button onClick={onLogout} className="font-medium text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] transition-colors">
+                      Sair
+                    </button>
+                  </li>
+                </>
+              ) : (
+                <li>
+                  <a href="#/login" onClick={handleNavClick} className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                      page === 'login' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                  }`}>
+                    Entrar / Cadastrar
+                  </a>
+                </li>
+              )}
+            </ul>
+          </nav>
+
+          {/* Right side: Mobile Menu Button (visible only on small screens) */}
+          <div className="sm:hidden">
+            <button
+              onClick={toggleMenu}
+              aria-label={isMenuOpen ? "Fechar menu" : "Abrir menu"}
+              aria-expanded={isMenuOpen}
+              aria-controls="mobile-menu"
+              className="p-2 text-gray-700 dark:text-gray-300 hover:text-[#24a9c5] dark:hover:text-[#24a9c5] relative z-50"
+            >
+              {isMenuOpen ? <CloseIcon className="w-6 h-6" /> : <MenuIcon className="w-6 h-6" />}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* Mobile Menu Overlay */}
+      <div
+        role="presentation"
+        onClick={() => setIsMenuOpen(false)}
+        className={`sm:hidden fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ${
+          isMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        }`}
+      />
+
+      {/* Mobile Menu Sidebar */}
+      <aside
+        id="mobile-menu"
+        className={`sm:hidden fixed top-0 right-0 h-full w-4/5 max-w-xs bg-white/75 dark:bg-gray-800/75 backdrop-blur-xl shadow-xl z-50 transform transition-transform duration-300 ease-in-out ${
+          isMenuOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+        aria-hidden={!isMenuOpen}
+      >
+        <div className="p-4 flex flex-col h-full">
+            {/* Sidebar Header - User Profile */}
+            <div className="flex items-center gap-3 pb-4 mb-4 border-b border-gray-200/60 dark:border-gray-700/60">
+                <div className="w-12 h-12 flex items-center justify-center bg-gray-200 dark:bg-gray-600 rounded-full">
+                    <UserIcon className="w-6 h-6 text-gray-500 dark:text-gray-300" />
+                </div>
+                <div>
+                    {currentUser ? (
+                      <p className="font-semibold text-gray-800 dark:text-gray-200">{currentUser}</p>
+                    ) : (
+                      <a href="#/login" onClick={handleNavClick} className="font-semibold text-gray-800 dark:text-gray-200 hover:underline">
+                        Entrar / Cadastrar
+                      </a>
+                    )}
+                </div>
+            </div>
+            
+            {/* Navigation */}
+            <nav className="flex-grow">
+                <ul className="flex flex-col gap-2">
+                    <li>
+                      <a
+                          href="#/home"
+                          onClick={handleNavClick}
+                          className={`block px-4 py-3 rounded-lg text-base font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                            page === 'home' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                          }`}
+                      >
+                          Início
+                      </a>
+                    </li>
+                    <li>
+                      <a
+                          href="#/history"
+                          onClick={handleNavClick}
+                          className={`block px-4 py-3 rounded-lg text-base font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                            page === 'history' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                          }`}
+                      >
+                          Minhas Transcrições
+                      </a>
+                    </li>
+                    <li>
+                      <a
+                          href="#/recordings"
+                          onClick={handleNavClick}
+                          className={`block px-4 py-3 rounded-lg text-base font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                            page === 'recordings' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                          }`}
+                      >
+                          Gravações
+                      </a>
+                    </li>
+                    <li>
+                      <a
+                          href="#/favorites"
+                          onClick={handleNavClick}
+                          className={`block px-4 py-3 rounded-lg text-base font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                            page === 'favorites' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                          }`}
+                      >
+                          Favoritos
+                      </a>
+                    </li>
+                     <li>
+                      <a
+                          href="#/translations"
+                          onClick={handleNavClick}
+                          className={`block px-4 py-3 rounded-lg text-base font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                            page === 'translations' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                          }`}
+                      >
+                          Traduções
+                      </a>
+                    </li>
+                    {currentUser && (
+                      <li>
+                          <button
+                              onClick={handleLogoutAndCloseMenu}
+                              className="block w-full text-left px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                          >
+                              Sair
+                          </button>
+                      </li>
+                    )}
+                </ul>
+            </nav>
+
+            {/* Preferences & Footer Section */}
+            <div>
+              <div className="pt-4 border-t border-gray-200/60 dark:border-gray-700/60">
+                <h3 className="px-4 text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">
+                    Preferências
+                </h3>
+                <div className="px-4 py-2 space-y-4">
+                    {/* Theme Switcher */}
+                    <div>
+                        <p className="text-base font-medium text-gray-700 dark:text-gray-300 mb-2">Tema</p>
+                        <button
+                            type="button"
+                            role="switch"
+                            aria-label={`Mudar para modo ${localTheme === 'dark' ? 'claro' : 'escuro'}`}
+                            aria-checked={localTheme === 'light'}
+                            onClick={() => setLocalTheme(localTheme === 'dark' ? 'light' : 'dark')}
+                            className="relative w-14 h-8 flex items-center bg-gray-300 dark:bg-gray-600 rounded-full p-1 cursor-pointer transition-colors duration-300"
+                        >
+                            <span className="absolute left-0 w-full h-full flex items-center justify-between px-2">
+                                <MoonIcon className={`w-4 h-4 transition-colors ${localTheme === 'dark' ? 'text-yellow-400' : 'text-gray-500'}`} />
+                                <SunIcon className={`w-4 h-4 transition-colors ${localTheme === 'light' ? 'text-yellow-500' : 'text-gray-500'}`} />
+                            </span>
+                            <span
+                                className={`block w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 ${localTheme === 'light' ? 'translate-x-6' : 'translate-x-0'}`}
+                            />
+                        </button>
+                    </div>
+                    {/* Language Selector */}
+                    <div>
+                        <p className="text-base font-medium text-gray-700 dark:text-gray-300 mb-2">Idioma de Saída</p>
+                        <div role="radiogroup" className="flex items-center gap-4">
+                            <button role="radio" aria-checked={localLanguage === 'pt'} onClick={() => setLocalLanguage('pt')} className={`text-sm font-medium transition-colors ${localLanguage === 'pt' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Português</button>
+                            <button role="radio" aria-checked={localLanguage === 'en'} onClick={() => setLocalLanguage('en')} className={`text-sm font-medium transition-colors ${localLanguage === 'en' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Inglês</button>
+                            <button role="radio" aria-checked={localLanguage === 'sn'} onClick={() => setLocalLanguage('sn')} className={`text-sm font-medium transition-colors ${localLanguage === 'sn' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Shona</button>
+                        </div>
+                    </div>
+                     {/* Save Button */}
+                    <div className="text-left mt-4">
+                        <button onClick={handleSavePreferences} className="text-sm font-medium text-gray-600 dark:text-gray-400 hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-800 rounded-md p-1">
+                            Guardar e Atualizar
+                        </button>
+                    </div>
+                </div>
+              </div>
+
+              {/* Sidebar Footer */}
+              <footer className="border-t border-gray-200/60 dark:border-gray-700/60 pt-4 text-center text-gray-500 dark:text-gray-400 text-xs select-none">
+                  <p>
+                  © {new Date().getFullYear()} Longani &middot; v0.9.2
+                  </p>
+              </footer>
+            </div>
+        </div>
+      </aside>
+    </>
   );
 };

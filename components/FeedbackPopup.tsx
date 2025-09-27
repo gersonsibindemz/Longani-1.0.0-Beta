@@ -63,7 +63,7 @@ export const FeedbackPopup: React.FC<FeedbackPopupProps> = ({ onSubmit, onClose 
     <div role="dialog" aria-modal="true" aria-labelledby="feedback-title" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
       <div className="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8 transform transition-all animate-in fade-in-0 zoom-in-95">
         <button onClick={onClose} aria-label="Fechar" className="absolute top-4 right-4 text-gray-400 hover:text-gray-700 dark:text-gray-500 dark:hover:text-gray-300 transition-colors">
-          <CloseIcon />
+          <CloseIcon className="w-6 h-6" />
         </button>
 
         <form onSubmit={handleSubmission} noValidate>

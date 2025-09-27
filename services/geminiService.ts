@@ -46,7 +46,7 @@ As a state-of-the-art speech recognition model, your primary task is a literal a
 `;
 
 const cleanPromptTemplate = (rawTranscript: string) => `
-You are an expert editor specializing in transforming raw, verbatim transcripts into professionally structured and readable documents. Your task is to convert the raw Portuguese transcript below into a clean, well-formatted HTML document.
+You are an expert editor specializing in transforming raw, verbatim transcripts into professionally structured and readable documents. Your task is to convert the raw transcript below into a clean, well-formatted HTML document.
 
 **Raw Transcript:**
 ---
@@ -59,6 +59,23 @@ ${rawTranscript}
 3.  **Refine Content:** Meticulously correct grammar, spelling, and punctuation. Remove filler words (e.g., "uhm," "ah," "tipo"), false starts, and unnecessary repetitions. Rewrite sentences for better clarity and flow, but **you must strictly preserve the original meaning, intent, and voice of the speaker(s)**. Use standard paragraph tags (\`<p>\`).
 4.  **Add Emphasis:** Use \`<strong>\` tags to highlight key terms, conclusions, or important statements. Use \`<em>\` for more subtle emphasis where natural.
 5.  **Output Requirements:** Provide ONLY the HTML body content. Do not include \`<html>\`, \`<body>\`, or markdown fences like \`\`\`html\`\`\`. The output must be ready to be injected directly into a webpage.
+`;
+
+const translatePromptTemplate = (textToTranslate: string, targetLanguageName: string) => `
+You are a highly skilled professional translator with expertise in both Mozambican Portuguese and ${targetLanguageName}. Your task is to translate the following Portuguese text, which is in HTML format, into ${targetLanguageName}.
+
+**Source Portuguese Text:**
+---
+${textToTranslate}
+---
+
+**Core Instructions:**
+1.  **Preserve Meaning and Intent:** Do not perform a literal, word-for-word translation. Your primary goal is to accurately convey the original message's meaning, nuance, and tone.
+2.  **Cultural and Idiomatic Accuracy:** Adapt idiomatic expressions, cultural references, and colloquialisms from Portuguese to natural-sounding equivalents in ${targetLanguageName}.
+3.  **Professional Tone:** Maintain a professional and formal tone unless the source text is explicitly informal. The final output should be suitable for business, academic, or official use.
+4.  **Grammar and Syntax:** Ensure the final translation is grammatically perfect and uses correct syntax for ${targetLanguageName}.
+5.  **Maintain HTML Formatting:** The source text is structured with HTML tags (e.g., \`<h2>\`, \`<p>\`, \`<ul>\`, \`<strong>\`). You MUST preserve this HTML structure. Translate the text content *within* the tags, but do not alter, add, or remove the tags themselves.
+6.  **Output Requirements:** Provide ONLY the translated HTML body content. Do not include \`<html>\`, \`<body>\`, or markdown fences like \`\`\`html\`\`\`. The output must be ready to be injected directly into a webpage.
 `;
 
 export function transcribeAudio(audioBase64: string, audioMimeType: string): AsyncGenerator<string> {
@@ -100,3 +117,22 @@ export function cleanTranscript(rawTranscript: string): AsyncGenerator<string> {
 
     return generateStream(request);
 };
+
+export function translateText(textToTranslate: string, targetLanguage: 'en' | 'sn'): AsyncGenerator<string> {
+    if (!textToTranslate.trim()) {
+        return (async function*() {})();
+    }
+
+    const targetLanguageName = targetLanguage === 'en' ? 'English' : 'Shona';
+    const prompt = translatePromptTemplate(textToTranslate, targetLanguageName);
+
+    const request: GenerateContentParameters = {
+        model: 'gemini-2.5-flash',
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+            temperature: 0.3, // Lower temp for more precise, less "creative" translation
+        }
+    };
+
+    return generateStream(request);
+}

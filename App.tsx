@@ -1,18 +1,37 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { transcribeAudio, cleanTranscript } from './services/geminiService';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { transcribeAudio, cleanTranscript, translateText } from './services/geminiService';
 import { Header, longaniLogoUrl } from './components/Header';
 import { FileUpload } from './components/FileUpload';
 import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { ProgressBar } from './components/ProgressBar';
 import { Loader } from './components/Loader';
 import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon } from './components/Icons';
-import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage } from './utils/audioUtils';
+import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, getNumericProcessingTimeEstimate, formatProcessingTime } from './utils/audioUtils';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
+import { HistoryPage } from './components/HistoryPage';
+import { RecordingsPage } from './components/RecordingsPage';
+import { addTranscription, addAudioFile, AudioRecording, getAllTranscriptions, Transcription } from './utils/db';
+import { NowPlayingBar } from './components/NowPlayingBar';
+import { FavoritesPage } from './components/FavoritesPage';
+import { TranslationsPage } from './components/TranslationsPage';
+import { CustomAudioPlayer } from './components/CustomAudioPlayer';
+import { LoginPage } from './components/LoginPage';
+
 
 type ProcessStage = 'idle' | 'transcribing' | 'cleaning' | 'completed';
-export type Theme = 'system' | 'light' | 'dark';
+export type Theme = 'light' | 'dark';
+export type PreferredLanguage = 'pt' | 'en' | 'sn';
+
 type ExpandedTranscript = 'raw' | 'cleaned' | 'none';
 type OutputPreference = 'both' | 'raw' | 'cleaned';
+
+const languageMap: { [key in PreferredLanguage]: string } = {
+  pt: 'Português',
+  en: 'Inglês',
+  sn: 'Shona'
+};
+
+const getCurrentPage = () => window.location.hash.replace(/^#\/?/, '') || 'home';
 
 const App: React.FC = () => {
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -27,24 +46,69 @@ const App: React.FC = () => {
   const [initialPrecision, setInitialPrecision] = useState<number | null>(null);
   const [isAppVisible, setIsAppVisible] = useState(false);
   const [showExitToast, setShowExitToast] = useState(false);
-  const [theme, setTheme] = useState<Theme>('system');
+  const [theme, setTheme] = useState<Theme>('dark');
+  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>('pt');
   const [isPWA, setIsPWA] = useState(false);
   const [expandedTranscript, setExpandedTranscript] = useState<ExpandedTranscript>('none');
   const [fileSelectionSuccess, setFileSelectionSuccess] = useState(false);
   const [outputPreference, setOutputPreference] = useState<OutputPreference>('both');
-  const [isEffectivelyDark, setIsEffectivelyDark] = useState(false);
+  const [page, setPage] = useState<string>(getCurrentPage());
+  const [nowPlaying, setNowPlaying] = useState<AudioRecording | null>(null);
+  const [nowPlayingUrl, setNowPlayingUrl] = useState<string | null>(null);
+  const [currentAudioId, setCurrentAudioId] = useState<string | null>(null);
+  const [recentTranscriptions, setRecentTranscriptions] = useState<Transcription[]>([]);
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  
+  // State for real-time progress and final stats
+  const [audioDuration, setAudioDuration] = useState<number>(0);
+  const [processingTime, setProcessingTime] = useState<string | null>(null);
 
-  const MAX_FILE_SIZE_MB = 25; // Increased file size limit
+  const isEffectivelyDark = theme === 'dark';
+
+  const MAX_FILE_SIZE_MB = 100;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setPage(getCurrentPage());
+    };
+    window.addEventListener('hashchange', handleHashChange, false);
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange, false);
+    };
+  }, []);
+
+  useEffect(() => {
+    const loadRecents = async () => {
+        if (page === 'home') {
+            try {
+                const all = await getAllTranscriptions();
+                setRecentTranscriptions(all.slice(0, 10)); // Get latest 10
+            } catch (e) {
+                console.error("Failed to load recent transcriptions:", e);
+            }
+        }
+    };
+    loadRecents();
+  }, [page]);
 
   // This useEffect runs once on mount to detect PWA, load theme, and handle initial loading animation.
   useEffect(() => {
+    const savedUser = localStorage.getItem('currentUser');
+    if (savedUser) {
+        setCurrentUser(savedUser);
+    }
+
     const pwaQuery = window.matchMedia('(display-mode: standalone)');
     if (pwaQuery.matches) {
       setIsPWA(true);
       const storedTheme = localStorage.getItem('theme') as Theme | null;
-      if (storedTheme && ['light', 'dark', 'system'].includes(storedTheme)) {
+      if (storedTheme && ['light', 'dark'].includes(storedTheme)) {
         setTheme(storedTheme);
+      }
+      const storedLanguage = localStorage.getItem('preferredLanguage') as PreferredLanguage | null;
+      if (storedLanguage && ['pt', 'en', 'sn'].includes(storedLanguage)) {
+        setPreferredLanguage(storedLanguage);
       }
       // For PWA, show the app immediately without a video splash screen.
       setIsAppVisible(true);
@@ -70,23 +134,11 @@ const App: React.FC = () => {
 
   // This useEffect handles applying the theme and saving the preference.
   useEffect(() => {
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-
-    const handleThemeChange = () => {
-      // Determine if dark mode should be active
-      const isDark =
-        theme === 'dark' || (theme === 'system' && mediaQuery.matches);
-      
-      setIsEffectivelyDark(isDark);
-
-      if (isDark) {
-        document.documentElement.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-      }
-    };
-    
-    handleThemeChange();
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
     
     if (isPWA) {
       try {
@@ -95,13 +147,16 @@ const App: React.FC = () => {
         console.warn('Não foi possível guardar o tema no localStorage:', e);
       }
     }
-    
-    mediaQuery.addEventListener('change', handleThemeChange);
-    
-    return () => {
-      mediaQuery.removeEventListener('change', handleThemeChange);
-    };
   }, [theme, isPWA]);
+
+  const handleSetPreferredLanguage = (lang: PreferredLanguage) => {
+    setPreferredLanguage(lang);
+    try {
+        localStorage.setItem('preferredLanguage', lang);
+    } catch (e) {
+        console.warn('Não foi possível guardar o idioma no localStorage:', e);
+    }
+  };
 
   useEffect(() => {
     // This feature is only for installed PWAs on mobile-like devices where a back button closes the app
@@ -138,15 +193,25 @@ const App: React.FC = () => {
     }
   }, [isPWA]);
 
-  // Effect to clean up the audio object URL to prevent memory leaks.
+  // Effect to clean up the audio object URLs to prevent memory leaks.
   useEffect(() => {
     return () => {
       if (audioUrl) {
         URL.revokeObjectURL(audioUrl);
       }
+      if (nowPlayingUrl) {
+        URL.revokeObjectURL(nowPlayingUrl);
+      }
     };
-  }, [audioUrl]);
-
+  }, [audioUrl, nowPlayingUrl]);
+  
+  const handleCloseNowPlaying = useCallback(() => {
+    if (nowPlayingUrl) {
+        URL.revokeObjectURL(nowPlayingUrl);
+    }
+    setNowPlaying(null);
+    setNowPlayingUrl(null);
+  }, [nowPlayingUrl]);
 
   const handleReset = useCallback(() => {
     if (audioUrl) {
@@ -165,7 +230,11 @@ const App: React.FC = () => {
     setExpandedTranscript('none');
     setFileSelectionSuccess(false);
     setOutputPreference('both');
-  }, [audioUrl]);
+    setCurrentAudioId(null);
+    setAudioDuration(0);
+    setProcessingTime(null);
+    handleCloseNowPlaying();
+  }, [audioUrl, handleCloseNowPlaying]);
 
   const handleFileChange = async (file: File | null) => {
     handleReset();
@@ -182,9 +251,11 @@ const App: React.FC = () => {
       setAudioFile(file);
       setAudioUrl(URL.createObjectURL(file));
       setFileSelectionSuccess(true);
+      setCurrentAudioId(null); // Reset audio ID for new uploads
 
       try {
         const duration = await getAudioDuration(file);
+        setAudioDuration(duration); // Store numeric duration for progress calculation
         setEstimatedTime(estimateProcessingTime(duration));
         const potential = estimatePrecisionPotential(file.name);
         setPrecisionPotential(potential);
@@ -200,10 +271,55 @@ const App: React.FC = () => {
     }
   };
 
-  const fileToBase64 = (file: File): Promise<string> => {
+  const handleTranscribeFromRecordings = async (audio: AudioRecording) => {
+    // Create a File object from the Blob
+    const file = new File([audio.audioBlob], audio.name, {
+      type: audio.audioBlob.type || 'audio/wav', // Provide a default MIME type
+    });
+  
+    // Use a modified file change handler to set up the app state AND the audio ID
+    handleReset();
+    setAudioFile(file);
+    setAudioUrl(URL.createObjectURL(file));
+    setFileSelectionSuccess(true);
+    setCurrentAudioId(audio.id); // IMPORTANT: Link this job to the existing audio file
+
+    try {
+        const duration = await getAudioDuration(file);
+        setAudioDuration(duration);
+        setEstimatedTime(estimateProcessingTime(duration));
+        const potential = estimatePrecisionPotential(file.name);
+        setPrecisionPotential(potential);
+        setInitialPrecision(potential);
+    } catch (err) {
+        // Error handling from the original handleFileChange
+        console.error('Erro ao obter metadados do áudio:', err);
+        const errorMessage = 'Não foi possível ler a duração do áudio. O ficheiro pode estar corrompido ou num formato não suportado.';
+        setError(`${errorMessage} As estimativas não estão disponíveis, mas ainda pode processar o ficheiro.`);
+        setEstimatedTime(null);
+        setInitialPrecision(null);
+    }
+  
+    // Navigate to the home page
+    window.location.hash = '#/home';
+  };
+
+  const handlePlayAudio = (audio: AudioRecording) => {
+    if (nowPlaying?.id === audio.id) {
+        return; 
+    }
+    if (nowPlayingUrl) {
+        URL.revokeObjectURL(nowPlayingUrl);
+    }
+    const url = URL.createObjectURL(audio.audioBlob);
+    setNowPlaying(audio);
+    setNowPlayingUrl(url);
+  };
+
+  const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(blob);
       reader.onload = () => {
         const result = reader.result as string;
         if (result && result.includes(',')) {
@@ -215,34 +331,52 @@ const App: React.FC = () => {
       };
       reader.onerror = () => {
         reader.abort();
-        reject(new Error(`Não foi possível ler o ficheiro: ${file.name}. Pode estar corrompido ou o navegador pode não ter permissão.`));
+        reject(new Error(`Não foi possível ler o ficheiro. Pode estar corrompido ou o navegador pode não ter permissão.`));
       };
     });
   };
 
   const handleProcessAudio = useCallback(async () => {
-    if (!audioFile) {
-      setError('Por favor, selecione primeiro um ficheiro de áudio.');
+    const audioToProcess = audioFile;
+
+    if (!audioFile || !audioToProcess) {
+      setError('Por favor, selecione um ficheiro de áudio para processar.');
       return;
     }
+    
+    handleCloseNowPlaying();
   
-    // Generate a unique ID for this transcription job for future tracking
     const transcriptionId = `longani-job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    console.log(`Starting processing for job ID: ${transcriptionId}`);
-
     setError(null);
+    let fullRawTranscript = '';
+    let finalHtml = '';
     setRawTranscript('');
     setCleanedTranscript('');
+
+    const startTime = Date.now();
+    setProcessingTime(null);
   
     try {
-      const audioBase64 = await fileToBase64(audioFile);
-      const audioMimeType = audioFile.type;
+      let audioId = currentAudioId;
+      if (!audioId) {
+        const newAudioFile = {
+          id: `audio-${Date.now()}-${audioFile.name}`,
+          name: audioFile.name,
+          date: Date.now(),
+          type: 'upload' as const,
+          audioBlob: audioFile,
+          isFavorite: false,
+        };
+        await addAudioFile(newAudioFile);
+        audioId = newAudioFile.id;
+      }
+
+      const audioBase64 = await blobToBase64(audioToProcess);
+      const audioMimeType = audioToProcess.type;
   
-      const BATCH_UPDATE_INTERVAL = 100; // ms
+      const BATCH_UPDATE_INTERVAL = 100;
   
-      // --- Transcribing with batched updates ---
       setProcessStage('transcribing');
-      let fullRawTranscript = '';
       let lastRawUpdate = 0;
       for await (const chunk of transcribeAudio(audioBase64, audioMimeType)) {
         fullRawTranscript += chunk;
@@ -256,189 +390,272 @@ const App: React.FC = () => {
           lastRawUpdate = now;
         }
       }
-      setRawTranscript(fullRawTranscript); // Final update with any remaining text
+      setRawTranscript(fullRawTranscript);
   
       if (initialPrecision !== null) {
         const dynamicPrecision = calculateDynamicPrecision(fullRawTranscript, initialPrecision);
         setPrecisionPotential(dynamicPrecision);
       }
 
-      // --- Cleaning with batched updates ---
       if (fullRawTranscript.trim()) {
         setProcessStage('cleaning');
-        let fullCleanedTranscript = '';
-        let lastCleanedUpdate = 0;
+        let cleanedHtml = '';
         for await (const chunk of cleanTranscript(fullRawTranscript)) {
-          fullCleanedTranscript += chunk;
-          const now = Date.now();
-          if (now - lastCleanedUpdate > BATCH_UPDATE_INTERVAL) {
-            setCleanedTranscript(fullCleanedTranscript);
-            lastCleanedUpdate = now;
+          cleanedHtml += chunk;
+          if (preferredLanguage === 'pt') {
+            setCleanedTranscript(cleanedHtml);
           }
         }
-        setCleanedTranscript(fullCleanedTranscript); // Final update
+        finalHtml = cleanedHtml;
+
+        if (preferredLanguage !== 'pt' && cleanedHtml.trim()) {
+          if (preferredLanguage === 'en' || preferredLanguage === 'sn') {
+            let translatedHtml = '';
+            for await (const chunk of translateText(cleanedHtml, preferredLanguage)) {
+                translatedHtml += chunk;
+                setCleanedTranscript(translatedHtml);
+            }
+            finalHtml = translatedHtml;
+          }
+        }
+        setCleanedTranscript(finalHtml);
       } else {
         setCleanedTranscript('');
       }
       
       setProcessStage('completed');
+      const endTime = Date.now();
+      setProcessingTime(formatProcessingTime(endTime - startTime));
+
+      if (audioFile) {
+        await addTranscription({
+          id: transcriptionId,
+          filename: audioFile.name,
+          date: Date.now(),
+          rawTranscript: fullRawTranscript,
+          cleanedTranscript: finalHtml,
+          audioId: audioId,
+          isFavorite: false,
+        });
+      }
   
     } catch (err) {
       const friendlyMessage = getFriendlyErrorMessage(err, transcriptionId);
       setError(friendlyMessage);
       setProcessStage('idle');
     }
-  }, [audioFile, initialPrecision]);
+  }, [audioFile, initialPrecision, currentAudioId, handleCloseNowPlaying, preferredLanguage, audioDuration]);
 
   const handleToggleTranscript = (transcriptType: 'raw' | 'cleaned') => {
     setExpandedTranscript(current => (current === transcriptType ? 'none' : transcriptType));
+  };
+
+  const handleHistoryClick = (transcriptionId: string) => {
+    sessionStorage.setItem('highlightTranscriptionId', transcriptionId);
+    window.location.hash = '#/history';
+  };
+
+  const handleLoginSuccess = (username: string) => {
+    setCurrentUser(username);
+    localStorage.setItem('currentUser', username);
+    window.location.hash = '#/home';
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem('currentUser');
+    window.location.hash = '#/home';
   };
   
   const isProcessing = processStage === 'transcribing' || processStage === 'cleaning';
   const isAccordionMode = processStage === 'completed';
   const finalDisplayIsSingleColumn = processStage === 'completed' && outputPreference !== 'both';
 
-  return (
-    <>
-      <div className={`min-h-screen flex flex-col transition-opacity duration-500 ease-in-out ${isAppVisible ? 'opacity-100' : 'opacity-0'}`}>
-        <Header />
-        <main className="container mx-auto px-4 py-8 flex-grow">
-          <h3 className="max-w-3xl mx-auto text-xl md:text-2xl font-light text-center text-gray-700 dark:text-gray-300 mb-8">
-            Transforme seu áudio em texto profissional, pronto para usar.
-          </h3>
-          <div className="max-w-3xl mx-auto bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
-            
-            <div className="flex flex-col sm:flex-row gap-4 items-start justify-center mb-4">
-              {processStage === 'idle' && (
-                <div className="w-full sm:w-auto">
-                  <FileUpload key={fileInputKey} onFileChange={handleFileChange} disabled={isProcessing} fileSelected={fileSelectionSuccess} />
-                  <p className="text-gray-500 dark:text-gray-400 text-xs mt-2 text-center sm:text-left">
-                    Ficheiros de áudio suportados (.mp3, .wav, .m4a, etc.) com um limite de {MAX_FILE_SIZE_MB}MB.
-                  </p>
-                </div>
-              )}
-              
-              {processStage === 'completed' ? (
-                <button
-                  onClick={handleReset}
-                  className="w-full sm:w-auto flex items-center justify-center gap-2 bg-gray-600 text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-gray-700 dark:bg-gray-500 dark:hover:bg-gray-400 transition-all duration-300 transform hover:scale-105"
-                >
-                  <ReloadIcon />
-                  <span>Nova Transcrição</span>
-                </button>
-              ) : (
-                <button
-                  onClick={handleProcessAudio}
-                  disabled={!audioFile || isProcessing}
-                  className={`w-full sm:w-auto flex items-center justify-center gap-2 bg-[#24a9c5] text-white font-semibold py-3 px-6 rounded-lg shadow-md hover:bg-[#1e8a9f] disabled:bg-[#d3eef4] dark:disabled:bg-gray-700 disabled:cursor-not-allowed disabled:text-gray-500 dark:disabled:text-gray-400 transition-all duration-300 transform hover:scale-105 ${processStage !== 'idle' ? 'flex-grow sm:flex-grow-0' : ''}`}
-                >
-                  {isProcessing ? (
-                    <Loader className="-ml-1 mr-2 text-white" />
-                  ) : (
-                    <ArrowRightIcon />
-                  )}
-                  <span>
-                    {isProcessing ? (processStage === 'transcribing' ? 'A transcrever...' : 'A otimizar...') : 'Iniciar Processo'}
-                  </span>
-                </button>
-              )}
+  const renderPage = () => {
+    switch (page) {
+      case 'login':
+        return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+      case 'history':
+        return <HistoryPage />;
+      case 'recordings':
+        return <RecordingsPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} />;
+      case 'favorites':
+        return <FavoritesPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} />;
+      case 'translations':
+        return <TranslationsPage />;
+      case 'home':
+      default:
+        const recentHistorySection = (
+            <div className="max-w-3xl mx-auto w-full mt-8 pt-8 border-t border-gray-200 dark:border-gray-700 animate-fade-in">
+                <h4 className="text-left text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">Histórico Recente</h4>
+                {recentTranscriptions.length > 0 ? (
+                    <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                        {recentTranscriptions.map(t => (
+                            <li key={t.id}>
+                                <button onClick={() => handleHistoryClick(t.id)} className="w-full text-left flex justify-between items-center py-3 hover:bg-gray-100/50 dark:hover:bg-gray-700/20 rounded-md transition-colors">
+                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate pr-4" title={t.filename}>{t.filename}</span>
+                                    <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
+                                        {new Date(t.date).toLocaleString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <div className="text-center py-6">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">Nenhuma transcrição recente encontrada.</p>
+                    </div>
+                )}
             </div>
-            
-            {audioFile && processStage === 'idle' && (estimatedTime || precisionPotential !== null) && (
-              <div className="mt-4 text-left p-4 bg-gray-50/80 dark:bg-gray-800/50 border border-gray-200/80 dark:border-gray-700/80 rounded-lg">
-                  <div className="grid grid-cols-1 sm:grid-cols-1 gap-y-4">
-                      {estimatedTime && (
-                          <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
-                              <ClockIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
-                              <div>
-                                  <div className="flex items-center gap-1.5">
-                                      <p className="font-semibold">Tempo Estimado</p>
-                                      <div className="group relative flex items-center cursor-help">
-                                          <InfoIcon className="w-4 h-4 text-gray-400 dark:text-gray-500" />
-                                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-60 p-3 bg-gray-800 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10 dark:bg-gray-200 dark:text-gray-800">
-                                              Este é o tempo aproximado que o processo de transcrição e otimização irá demorar.
-                                              <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-gray-800 dark:border-t-gray-200"></div>
-                                          </div>
-                                      </div>
-                                  </div>
-                                  <p className="text-gray-600 dark:text-gray-400">{estimatedTime}</p>
-                              </div>
+        );
+        return (
+          <main className="container mx-auto px-4 py-8 flex-grow flex flex-col">
+            {!audioFile && (
+              <div className="flex-grow flex flex-col">
+                <div className="flex-grow flex flex-col justify-center items-center">
+                    <div className="max-w-3xl mx-auto w-full bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
+                      <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
+                        <FileUpload key={fileInputKey} onFileChange={handleFileChange} disabled={isProcessing} fileSelected={fileSelectionSuccess} />
+                      </div>
+                      <p className="text-gray-500 dark:text-gray-400 text-xs mt-4 text-center">
+                        Ficheiros de áudio suportados (.mp3, .wav, .m4a, etc.) com um limite de {MAX_FILE_SIZE_MB}MB.
+                      </p>
+                      {preferredLanguage !== 'pt' && (
+                          <div className="text-center text-sm text-cyan-700 dark:text-cyan-400 mt-4 bg-cyan-50 dark:bg-cyan-900/30 p-3 rounded-lg border border-cyan-100 dark:border-cyan-800">
+                              <InfoIcon className="w-4 h-4 inline-block mr-2 align-middle" />
+                              <span className="align-middle">Nota: A transcrição final será entregue em <strong>{languageMap[preferredLanguage]}</strong>.</span>
                           </div>
                       )}
-                      {precisionPotential !== null && (
-                         <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
-                             <TargetIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
-                             <div className="w-full">
-                                 <div className="flex justify-between items-baseline mb-1">
-                                     <div className="flex items-center gap-1.5">
-                                         <p className="font-semibold">Potencial de Precisão</p>
-                                         <div className="group relative flex items-center cursor-help">
-                                             <InfoIcon className="w-4 h-4 text-gray-400 dark:text-gray-500" />
-                                             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-60 p-3 bg-gray-800 text-white text-xs rounded-lg shadow-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10 dark:bg-gray-200 dark:text-gray-800">
-                                                 Esta percentagem reflete a qualidade do ficheiro de áudio. Formatos de alta qualidade (como WAV) tendem a ter maior precisão na transcrição.
-                                                 <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-x-8 border-x-transparent border-t-8 border-t-gray-800 dark:border-t-gray-200"></div>
-                                             </div>
-                                         </div>
-                                     </div>
-                                     <p className="font-bold text-lg text-gray-800 dark:text-gray-200">{precisionPotential}<span className="text-sm">%</span></p>
-                                 </div>
-                                 <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                                     <div className="bg-gradient-to-r from-[#24a9c5] to-[#1e8a9f] h-2 rounded-full" style={{ width: `${precisionPotential}%` }}></div>
-                                 </div>
-                             </div>
-                         </div>
-                      )}
-                  </div>
-                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700 space-y-4">
-                    <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
-                      <ColumnsIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
-                      <div>
-                        <p id="output-preference-label" className="font-semibold mb-2">Visualização do Resultado</p>
-                        <div role="radiogroup" aria-labelledby="output-preference-label" className="flex flex-wrap gap-2">
-                          <button role="radio" aria-checked={outputPreference === 'both'} onClick={() => setOutputPreference('both')} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${outputPreference === 'both' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>
-                            Ambos
-                          </button>
-                          <button role="radio" aria-checked={outputPreference === 'raw'} onClick={() => setOutputPreference('raw')} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${outputPreference === 'raw' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>
-                            Apenas Literal
-                          </button>
-                          <button role="radio" aria-checked={outputPreference === 'cleaned'} onClick={() => setOutputPreference('cleaned')} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${outputPreference === 'cleaned' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>
-                            Apenas Formatado
-                          </button>
-                        </div>
-                      </div>
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      <strong>Nota:</strong> As estimativas são calculadas com base nas características técnicas do ficheiro. A precisão final depende da clareza do áudio, ruído de fundo e sotaques.
-                    </p>
-                  </div>
+                    <div className="my-4 flex items-center w-full max-w-xs text-center" aria-hidden="true">
+                        <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                        <span className="flex-shrink mx-4 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Ou</span>
+                        <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                    </div>
+                    <div className="text-center text-sm text-gray-600 dark:text-gray-400">
+                        Pode <button onClick={() => window.location.hash = '#/recordings'} className="font-medium text-[#24a9c5] hover:underline focus:outline-none focus:ring-1 focus:ring-[#24a9c5] rounded">gravar um áudio</button>.
+                    </div>
+                </div>
+                {recentHistorySection}
               </div>
             )}
 
+            {audioFile && processStage === 'idle' && (
+              <div className="flex-grow flex flex-col">
+                  <div className="flex-grow flex flex-col justify-center items-center">
+                    <div className="max-w-3xl mx-auto animate-fade-in-up w-full">
+                        <div className="bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
+                            <h2 className="text-xl font-bold text-center text-gray-800 dark:text-gray-200 mb-4">Ficheiro Pronto a Processar</h2>
+                            <p className="text-center text-gray-600 dark:text-gray-400 break-words mb-4">{audioFile.name}</p>
+                            {audioUrl && (
+                              <CustomAudioPlayer src={audioUrl} />
+                            )}
+                        </div>
+                        <div className="mt-6 text-left p-4 bg-white/60 dark:bg-gray-800/60 border border-gray-200/80 dark:border-gray-700/80 rounded-lg shadow-lg">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              {estimatedTime && (
+                                  <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+                                      <ClockIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
+                                      <div>
+                                          <p className="font-semibold">Tempo Estimado</p>
+                                          <p className="text-gray-600 dark:text-gray-400">{estimatedTime}</p>
+                                      </div>
+                                  </div>
+                              )}
+                              {precisionPotential !== null && (
+                                 <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+                                     <TargetIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
+                                     <div>
+                                         <p className="font-semibold">Potencial de Precisão</p>
+                                         <p className="text-gray-600 dark:text-gray-400">{precisionPotential}%</p>
+                                     </div>
+                                 </div>
+                              )}
+                          </div>
+                           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                            <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+                              <ColumnsIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
+                              <div>
+                                <p id="output-preference-label" className="font-semibold mb-2">Visualização do Resultado</p>
+                                <div role="radiogroup" aria-labelledby="output-preference-label" className="flex flex-wrap gap-2">
+                                  <button role="radio" aria-checked={outputPreference === 'both'} onClick={() => setOutputPreference('both')} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${outputPreference === 'both' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>Ambos</button>
+                                  <button role="radio" aria-checked={outputPreference === 'raw'} onClick={() => setOutputPreference('raw')} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${outputPreference === 'raw' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>Apenas Literal</button>
+                                  <button role="radio" aria-checked={outputPreference === 'cleaned'} onClick={() => setOutputPreference('cleaned')} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${outputPreference === 'cleaned' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>Apenas Formatado</button>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-8 flex flex-col gap-3 items-center justify-center">
+                          <button onClick={handleProcessAudio} disabled={isProcessing} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#24a9c5] text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-[#1e8a9f] disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105">
+                            <ArrowRightIcon className="w-5 h-5" />
+                            <span>Iniciar Processo</span>
+                          </button>
+                          <button onClick={handleReset} className="text-sm text-gray-500 dark:text-gray-400 hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-900 rounded-md p-1">
+                            Substituir Áudio
+                          </button>
+                        </div>
+                    </div>
+                  </div>
+                {recentHistorySection}
+              </div>
+            )}
+            
             {error && <div className="text-center text-red-800 bg-red-100 p-3 my-4 rounded-lg border border-red-200 dark:bg-red-900/50 dark:text-red-300 dark:border-red-800/50">{error}</div>}
 
             {processStage !== 'idle' && (
-              <div className="mt-6">
-                {audioFile && (
-                  <div className="mb-6 text-center p-4 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-                      <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">A processar o ficheiro:</p>
+              <div className="mt-6 max-w-3xl mx-auto w-full">
+                <div className="mb-6 p-4 bg-white/60 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
+                    <div className="text-center">
+                      <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">
+                        {processStage === 'completed' ? 'Ficheiro Processado:' : 'A processar o ficheiro:'}
+                      </p>
                       {isProcessing ? (
                           <div className="relative w-full flex overflow-x-hidden h-7 items-center">
                               <div className="animate-marquee whitespace-nowrap flex items-center">
                                   <p className="text-lg font-bold text-gray-800 dark:text-gray-200 px-4">
-                                      {audioFile.name}
+                                      {audioFile?.name}
                                   </p>
                               </div>
                               <div className="absolute top-0 animate-marquee2 whitespace-nowrap flex items-center h-full">
                                   <p className="text-lg font-bold text-gray-800 dark:text-gray-200 px-4">
-                                      {audioFile.name}
+                                      {audioFile?.name}
                                   </p>
                               </div>
                           </div>
                       ) : (
                           <p className="text-lg font-bold text-gray-800 dark:text-gray-200 truncate px-4">
-                              {audioFile.name}
+                              {audioFile?.name}
                           </p>
                       )}
+                    </div>
+                    {processStage === 'completed' && audioUrl ? (
+                      <>
+                        <div className="mt-4">
+                          <CustomAudioPlayer src={audioUrl} />
+                        </div>
+                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                            {processingTime && (
+                                <div className="flex items-start gap-3 text-gray-700 dark:text-gray-300 p-3 bg-gray-100 dark:bg-gray-900/50 rounded-lg">
+                                    <ClockIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
+                                    <div>
+                                        <p className="font-semibold">Tempo de Processamento</p>
+                                        <p className="text-gray-600 dark:text-gray-400">{processingTime}</p>
+                                    </div>
+                                </div>
+                            )}
+                            {precisionPotential !== null && (
+                                <div className="flex items-start gap-3 text-gray-700 dark:text-gray-300 p-3 bg-gray-100 dark:bg-gray-900/50 rounded-lg">
+                                    <TargetIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
+                                    <div>
+                                        <p className="font-semibold">Precisão Final Atingida</p>
+                                        <p className="text-gray-600 dark:text-gray-400">{precisionPotential}%</p>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                      </>
+                    ) : (
                       <div className="mt-2 flex flex-wrap justify-center items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
                           {estimatedTime && (
                               <span className="flex items-center gap-1">
@@ -453,55 +670,89 @@ const App: React.FC = () => {
                               </span>
                           )}
                       </div>
-                  </div>
-                )}
+                    )}
+                </div>
                 <ProgressBar stage={processStage} />
               </div>
             )}
-          </div>
-          
-          {(rawTranscript || cleanedTranscript || isProcessing) && (
-              <div className={`mt-12 grid grid-cols-1 ${finalDisplayIsSingleColumn ? 'lg:grid-cols-1' : 'lg:grid-cols-2'} gap-8`}>
-                  {(isProcessing || (processStage === 'completed' && (outputPreference === 'raw' || outputPreference === 'both'))) && <TranscriptDisplay 
-                      title="Texto Literal"
-                      text={rawTranscript}
-                      isLoading={processStage === 'transcribing'}
-                      isComplete={processStage !== 'transcribing' && rawTranscript.length > 0}
-                      isExpanded={!isAccordionMode || expandedTranscript === 'raw'}
-                      isClickable={isAccordionMode}
-                      onToggle={() => handleToggleTranscript('raw')}
-                      audioUrl={processStage === 'completed' ? audioUrl : null}
-                  />}
-                  {(isProcessing || (processStage === 'completed' && (outputPreference === 'cleaned' || outputPreference === 'both'))) && <TranscriptDisplay 
-                      title="Texto Formatado"
-                      text={cleanedTranscript}
-                      isLoading={processStage === 'cleaning'}
-                      isComplete={processStage === 'completed' && cleanedTranscript.length > 0}
-                      placeholder={processStage === 'cleaning' || processStage === 'completed' ? "A aguardar pela otimização..." : "O resultado aparecerá aqui."}
-                      renderAsHTML={true}
-                      isExpanded={!isAccordionMode || expandedTranscript === 'cleaned'}
-                      isClickable={isAccordionMode}
-                      onToggle={() => handleToggleTranscript('cleaned')}
-                  />}
-              </div>
-          )}
-        </main>
-        <footer className="text-center py-6 text-gray-500 dark:text-gray-400 text-sm select-none">
+            
+            {(rawTranscript || cleanedTranscript || isProcessing) && (
+                <div className={`mt-12 grid grid-cols-1 ${finalDisplayIsSingleColumn ? 'lg:grid-cols-1' : 'lg:grid-cols-2'} gap-8`}>
+                    {(isProcessing || (processStage === 'completed' && (outputPreference === 'raw' || outputPreference === 'both'))) && <TranscriptDisplay 
+                        title="Texto Literal"
+                        text={rawTranscript}
+                        isLoading={processStage === 'transcribing'}
+                        isComplete={processStage !== 'transcribing' && rawTranscript.length > 0}
+                        isExpanded={!isAccordionMode || expandedTranscript === 'raw'}
+                        isClickable={isAccordionMode}
+                        onToggle={() => handleToggleTranscript('raw')}
+                    />}
+                    {(isProcessing || (processStage === 'completed' && (outputPreference === 'cleaned' || outputPreference === 'both'))) && <TranscriptDisplay 
+                        title="Texto Formatado"
+                        text={cleanedTranscript}
+                        isLoading={processStage === 'cleaning'}
+                        isComplete={processStage === 'completed' && cleanedTranscript.length > 0}
+                        placeholder={processStage === 'cleaning' || processStage === 'completed' ? "A aguardar pela otimização..." : "O resultado aparecerá aqui."}
+                        renderAsHTML={true}
+                        isExpanded={!isAccordionMode || expandedTranscript === 'cleaned'}
+                        isClickable={isAccordionMode}
+                        onToggle={() => handleToggleTranscript('cleaned')}
+                    />}
+                </div>
+            )}
+
+            {processStage === 'completed' && (
+                <div className="mt-12 text-center animate-fade-in-up">
+                    <button
+                        onClick={handleReset}
+                        className="w-full sm:w-auto flex items-center justify-center gap-2 mx-auto bg-[#24a9c5] text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-[#1e8a9f] transition-all duration-300 transform hover:scale-105"
+                    >
+                        <ReloadIcon className="w-5 h-5" />
+                        <span>Transcrever Novo Ficheiro</span>
+                    </button>
+                </div>
+            )}
+          </main>
+        );
+    }
+  };
+
+  return (
+    <>
+      <div className={`min-h-screen flex flex-col transition-opacity duration-500 ease-in-out ${isAppVisible ? 'opacity-100' : 'opacity-0'} ${nowPlaying ? 'pb-24 sm:pb-20' : ''}`}>
+        <Header 
+          page={page} 
+          theme={theme} 
+          setTheme={setTheme} 
+          preferredLanguage={preferredLanguage} 
+          setPreferredLanguage={handleSetPreferredLanguage}
+          currentUser={currentUser}
+          onLogout={handleLogout}
+        />
+        {renderPage()}
+        <footer className="hidden sm:block text-center py-6 text-gray-500 dark:text-gray-400 text-sm select-none">
           <p>
-            © {new Date().getFullYear()} Longani &middot; v0.9.0
+            © {new Date().getFullYear()} Longani &middot; v0.9.2
           </p>
         </footer>
-        {showExitToast && (
-            <div
-              role="status"
-              aria-live="polite"
-              className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-800 px-4 py-2 rounded-full text-sm shadow-lg select-none z-[100] animate-fade-in-up"
-            >
-              Pressione novamente para sair
-            </div>
-        )}
-        {isPWA && <ThemeSwitcher setTheme={setTheme} isEffectivelyDark={isEffectivelyDark} />}
       </div>
+      {nowPlaying && nowPlayingUrl && (
+        <NowPlayingBar 
+          audio={nowPlaying} 
+          audioUrl={nowPlayingUrl} 
+          onClose={handleCloseNowPlaying} 
+        />
+      )}
+      {showExitToast && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-800 px-4 py-2 rounded-full text-sm shadow-lg select-none z-[100] animate-fade-in-up"
+          >
+            Pressione novamente para sair
+          </div>
+      )}
+      {isPWA && <ThemeSwitcher setTheme={setTheme} isEffectivelyDark={isEffectivelyDark} />}
     </>
   );
 };
