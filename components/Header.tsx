@@ -271,18 +271,20 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                           Traduções
                       </a>
                     </li>
-                    {currentUser && (
-                      <li>
-                          <button
-                              onClick={handleLogoutAndCloseMenu}
-                              className="block w-full text-left px-4 py-3 rounded-lg text-base font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                          >
-                              Sair
-                          </button>
-                      </li>
-                    )}
                 </ul>
             </nav>
+
+            {/* Logout Section */}
+            {currentUser && (
+                <div className="py-2">
+                    <button
+                        onClick={handleLogoutAndCloseMenu}
+                        className="block w-full text-left px-4 py-3 rounded-lg text-base font-medium text-red-600 dark:text-red-500 hover:bg-red-100 dark:hover:bg-red-800/20 transition-colors"
+                    >
+                        Sair
+                    </button>
+                </div>
+            )}
 
             {/* Preferences & Footer Section */}
             <div>
@@ -293,27 +295,27 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                 <div className="px-4 py-2 space-y-4">
                     {/* Theme Switcher */}
                     <div>
-                        <p className="text-base font-medium text-gray-700 dark:text-gray-300 mb-2">Tema</p>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Tema</p>
                         <button
                             type="button"
                             role="switch"
                             aria-label={`Mudar para modo ${localTheme === 'dark' ? 'claro' : 'escuro'}`}
                             aria-checked={localTheme === 'light'}
                             onClick={() => setLocalTheme(localTheme === 'dark' ? 'light' : 'dark')}
-                            className="relative w-14 h-8 flex items-center bg-gray-300 dark:bg-gray-600 rounded-full p-1 cursor-pointer transition-colors duration-300"
+                            className="relative w-12 h-7 flex items-center bg-gray-300 dark:bg-gray-600 rounded-full p-1 cursor-pointer transition-colors duration-300"
                         >
                             <span className="absolute left-0 w-full h-full flex items-center justify-between px-2">
-                                <MoonIcon className={`w-4 h-4 transition-colors ${localTheme === 'dark' ? 'text-yellow-400' : 'text-gray-500'}`} />
-                                <SunIcon className={`w-4 h-4 transition-colors ${localTheme === 'light' ? 'text-yellow-500' : 'text-gray-500'}`} />
+                                <MoonIcon className={`w-3 h-3 transition-colors ${localTheme === 'dark' ? 'text-yellow-400' : 'text-gray-500'}`} />
+                                <SunIcon className={`w-3 h-3 transition-colors ${localTheme === 'light' ? 'text-yellow-500' : 'text-gray-500'}`} />
                             </span>
                             <span
-                                className={`block w-6 h-6 bg-white rounded-full shadow-md transform transition-transform duration-300 ${localTheme === 'light' ? 'translate-x-6' : 'translate-x-0'}`}
+                                className={`block w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-300 ${localTheme === 'light' ? 'translate-x-5' : 'translate-x-0'}`}
                             />
                         </button>
                     </div>
                     {/* Language Selector */}
                     <div>
-                        <p className="text-base font-medium text-gray-700 dark:text-gray-300 mb-2">Idioma de Saída</p>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Idioma de Saída</p>
                         <div role="radiogroup" className="flex items-center gap-4">
                             <button role="radio" aria-checked={localLanguage === 'pt'} onClick={() => setLocalLanguage('pt')} className={`text-sm font-medium transition-colors ${localLanguage === 'pt' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Português</button>
                             <button role="radio" aria-checked={localLanguage === 'en'} onClick={() => setLocalLanguage('en')} className={`text-sm font-medium transition-colors ${localLanguage === 'en' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Inglês</button>
@@ -322,7 +324,7 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                     </div>
                      {/* Save Button */}
                     <div className="text-left mt-4">
-                        <button onClick={handleSavePreferences} className="text-sm font-medium text-gray-600 dark:text-gray-400 hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-800 rounded-md p-1">
+                        <button onClick={handleSavePreferences} className="text-sm font-bold text-[#24a9c5] hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-800 rounded-md p-1">
                             Guardar e Atualizar
                         </button>
                     </div>
