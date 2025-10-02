@@ -1,6 +1,6 @@
 // service-worker.js
 
-const CACHE_NAME = 'longani-cache-v12'; // Updated cache name for new components
+const CACHE_NAME = 'longani-cache-v13'; // Updated cache name for new components
 const urlsToCache = [
   '/',
   '/index.html',
@@ -24,7 +24,8 @@ const urlsToCache = [
   '/components/PropertiesModal.tsx',
   '/components/TranslationsPage.tsx',
   '/components/RefineModal.tsx',
-  '/components/SignUpPage.tsx', // New component
+  '/components/SignUpPage.tsx',
+  '/components/ProfilePage.tsx', // New component
 ];
 
 // Install event: open a cache and add the core app shell files to it.

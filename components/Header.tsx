@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MenuIcon, CloseIcon, UserIcon, SunIcon, MoonIcon } from './Icons';
 import { Theme, PreferredLanguage } from '../App';
+import type { User } from './ProfilePage';
 
 // The logo is loaded from an external URL.
 export const longaniLogoUrl = "https://i.postimg.cc/Kj4NpTYL/longani-logo-main.png";
@@ -11,7 +12,7 @@ interface HeaderProps {
   setTheme: (theme: Theme) => void;
   preferredLanguage: PreferredLanguage;
   setPreferredLanguage: (lang: PreferredLanguage) => void;
-  currentUser: string | null;
+  currentUser: User | null;
   onLogout: () => void;
 }
 
@@ -147,9 +148,15 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
               {currentUser ? (
                 <>
                   <li>
-                    <span className="font-semibold text-gray-800 dark:text-gray-200 cursor-default">
-                      {currentUser}
-                    </span>
+                    <a
+                      href="#/profile"
+                      onClick={handleNavClick}
+                      className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                        page === 'profile' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      Meu Perfil
+                    </a>
                   </li>
                   <li>
                     <button onClick={onLogout} className="font-medium text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] transition-colors">
@@ -204,12 +211,16 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
         <div className="p-4 flex flex-col h-full">
             {/* Sidebar Header - User Profile */}
             <div className="flex items-center gap-3 pb-4 mb-4 border-b border-gray-200/60 dark:border-gray-700/60">
-                <div className="w-12 h-12 flex items-center justify-center bg-gray-200 dark:bg-gray-600 rounded-full">
-                    <UserIcon className="w-6 h-6 text-gray-500 dark:text-gray-300" />
-                </div>
+                <a href="#/profile" onClick={handleNavClick} className="w-12 h-12 flex-shrink-0 flex items-center justify-center bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-800 ring-transparent hover:ring-[#24a9c5] transition-shadow">
+                    {currentUser?.photo ? (
+                        <img src={currentUser.photo} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                        <UserIcon className="w-6 h-6 text-gray-500 dark:text-gray-300" />
+                    )}
+                </a>
                 <div>
                     {currentUser ? (
-                      <p className="font-semibold text-gray-800 dark:text-gray-200">{currentUser}</p>
+                      <a href="#/profile" onClick={handleNavClick} className="font-semibold text-gray-800 dark:text-gray-200 hover:underline">{currentUser.name}</a>
                     ) : (
                       <a href="#/login" onClick={handleNavClick} className="font-semibold text-gray-800 dark:text-gray-200 hover:underline">
                         Entrar / Cadastrar
@@ -278,6 +289,17 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                               }`}
                           >
                               Traduções
+                          </a>
+                        </li>
+                         <li>
+                          <a
+                              href="#/profile"
+                              onClick={handleNavClick}
+                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                page === 'profile' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                              }`}
+                          >
+                              Meu Perfil
                           </a>
                         </li>
                     </ul>

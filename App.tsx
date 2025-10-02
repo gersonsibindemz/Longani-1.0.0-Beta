@@ -20,6 +20,9 @@ import { LoginPage } from './components/LoginPage';
 import { RefineModal } from './components/RefineModal';
 import type { RefineContentType, RefineOutputFormat } from './services/geminiService';
 import { SignUpPage } from './components/SignUpPage';
+import { ProfilePage } from './components/ProfilePage';
+import type { User } from './components/ProfilePage';
+
 
 type ProcessStage = 'idle' | 'transcribing' | 'cleaning' | 'completed';
 export type Theme = 'light' | 'dark';
@@ -86,7 +89,7 @@ const App: React.FC = () => {
   const [currentAudioId, setCurrentAudioId] = useState<string | null>(null);
   const [currentTranscriptionId, setCurrentTranscriptionId] = useState<string | null>(null);
   const [recentTranscriptions, setRecentTranscriptions] = useState<Transcription[]>([]);
-  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showDesktopMessage, setShowDesktopMessage] = useState(false);
   
   // State for real-time progress and final stats
@@ -181,9 +184,14 @@ const App: React.FC = () => {
 
   // This useEffect runs once on mount to detect PWA, load theme, and handle initial loading animation.
   useEffect(() => {
-    const savedUser = localStorage.getItem('currentUser');
-    if (savedUser) {
-        setCurrentUser(savedUser);
+    const savedUserJSON = localStorage.getItem('longaniUser');
+    if (savedUserJSON) {
+        try {
+            setCurrentUser(JSON.parse(savedUserJSON));
+        } catch (e) {
+            console.error("Failed to parse user from localStorage", e);
+            localStorage.removeItem('longaniUser');
+        }
     }
 
     const pwaQuery = window.matchMedia('(display-mode: standalone)');
@@ -611,15 +619,21 @@ const App: React.FC = () => {
   };
 
   const handleLoginSuccess = (username: string) => {
-    setCurrentUser(username);
-    localStorage.setItem('currentUser', username);
+    const newUser: User = { name: username, photo: null };
+    setCurrentUser(newUser);
+    localStorage.setItem('longaniUser', JSON.stringify(newUser));
     window.location.hash = '#/home';
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
-    localStorage.removeItem('currentUser');
-    window.location.hash = '#/home';
+    localStorage.removeItem('longaniUser');
+    window.location.hash = '#/login';
+  };
+  
+  const handleProfileUpdate = (updatedUser: User) => {
+    setCurrentUser(updatedUser);
+    localStorage.setItem('longaniUser', JSON.stringify(updatedUser));
   };
 
   const handleDismissDesktopMessage = () => {
@@ -637,6 +651,8 @@ const App: React.FC = () => {
         return <LoginPage onLoginSuccess={handleLoginSuccess} />;
       case 'signup':
         return <SignUpPage onSignUpSuccess={handleLoginSuccess} />;
+      case 'profile':
+        return <ProfilePage user={currentUser} onUpdateProfile={handleProfileUpdate} onLogout={handleLogout} />;
       case 'history':
         return <HistoryPage />;
       case 'recordings':
