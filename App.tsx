@@ -5,7 +5,7 @@ import { FileUpload } from './components/FileUpload';
 import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { ProgressBar } from './components/ProgressBar';
 import { Loader } from './components/Loader';
-import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon } from './components/Icons';
+import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon } from './components/Icons';
 import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, getNumericProcessingTimeEstimate, formatProcessingTime } from './utils/audioUtils';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { HistoryPage } from './components/HistoryPage';
@@ -87,6 +87,7 @@ const App: React.FC = () => {
   const [currentTranscriptionId, setCurrentTranscriptionId] = useState<string | null>(null);
   const [recentTranscriptions, setRecentTranscriptions] = useState<Transcription[]>([]);
   const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [showDesktopMessage, setShowDesktopMessage] = useState(false);
   
   // State for real-time progress and final stats
   const [audioDuration, setAudioDuration] = useState<number>(0);
@@ -215,6 +216,17 @@ const App: React.FC = () => {
         img.onload = null;
         img.onerror = null;
       };
+    }
+  }, []);
+  
+  // This useEffect handles the desktop message banner.
+  useEffect(() => {
+    const dismissed = localStorage.getItem('desktopMessageDismissed') === 'true';
+    const isDesktop = window.innerWidth >= 640; // 'sm' breakpoint
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+
+    if (!dismissed && isDesktop && !isStandalone) {
+        setShowDesktopMessage(true);
     }
   }, []);
 
@@ -609,6 +621,11 @@ const App: React.FC = () => {
     localStorage.removeItem('currentUser');
     window.location.hash = '#/home';
   };
+
+  const handleDismissDesktopMessage = () => {
+    setShowDesktopMessage(false);
+    localStorage.setItem('desktopMessageDismissed', 'true');
+  };
   
   const isProcessing = processStage === 'transcribing' || processStage === 'cleaning';
   const isAccordionMode = processStage === 'completed' && !advancedTranscript;
@@ -894,6 +911,17 @@ const App: React.FC = () => {
   return (
     <>
       <div className={`min-h-screen flex flex-col transition-opacity duration-500 ease-in-out ${isAppVisible ? 'opacity-100' : 'opacity-0'} ${nowPlaying ? 'pb-24 sm:pb-20' : ''}`}>
+        {showDesktopMessage && (
+            <div className="hidden sm:flex items-center justify-between gap-4 bg-cyan-100 dark:bg-cyan-900/50 px-4 py-2 text-sm text-cyan-800 dark:text-cyan-200">
+                <div className="flex items-center gap-3">
+                    <InfoIcon className="w-5 h-5 flex-shrink-0" />
+                    <p>Longani foi otimizado para uma experiência de aplicação móvel. Para o melhor desempenho, instale o nosso PWA no seu telemóvel.</p>
+                </div>
+                <button onClick={handleDismissDesktopMessage} aria-label="Dispensar mensagem" className="p-1 rounded-full hover:bg-cyan-200/50 dark:hover:bg-cyan-800/50 flex-shrink-0">
+                    <CloseIcon className="w-4 h-4" />
+                </button>
+            </div>
+        )}
         {page !== 'login' && page !== 'signup' && (
           <Header 
             page={page} 
