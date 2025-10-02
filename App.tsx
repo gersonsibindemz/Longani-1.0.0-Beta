@@ -1,22 +1,25 @@
 import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { transcribeAudio, cleanTranscript, translateText } from './services/geminiService';
+import { transcribeAudio, cleanTranscript, translateText, refineTranscript } from './services/geminiService';
 import { Header, longaniLogoUrl } from './components/Header';
 import { FileUpload } from './components/FileUpload';
 import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { ProgressBar } from './components/ProgressBar';
 import { Loader } from './components/Loader';
-import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon } from './components/Icons';
+import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon } from './components/Icons';
 import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, getNumericProcessingTimeEstimate, formatProcessingTime } from './utils/audioUtils';
 import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { HistoryPage } from './components/HistoryPage';
 import { RecordingsPage } from './components/RecordingsPage';
-import { addTranscription, addAudioFile, AudioRecording, getAllTranscriptions, Transcription } from './utils/db';
+// FIX: Imported the `updateTranscription` function to allow saving refined transcription data to the database.
+import { addTranscription, addAudioFile, AudioRecording, getAllTranscriptions, Transcription, getTranscriptionById, getAudioFile, updateTranscription, deleteTranscription } from './utils/db';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FavoritesPage } from './components/FavoritesPage';
 import { TranslationsPage } from './components/TranslationsPage';
 import { CustomAudioPlayer } from './components/CustomAudioPlayer';
 import { LoginPage } from './components/LoginPage';
-
+import { RefineModal } from './components/RefineModal';
+import type { RefineContentType, RefineOutputFormat } from './services/geminiService';
+import { SignUpPage } from './components/SignUpPage';
 
 type ProcessStage = 'idle' | 'transcribing' | 'cleaning' | 'completed';
 export type Theme = 'light' | 'dark';
@@ -29,6 +32,31 @@ const languageMap: { [key in PreferredLanguage]: string } = {
   pt: 'Português',
   en: 'Inglês',
   sn: 'Shona'
+};
+
+const contentLabels: { [key in RefineContentType]: string } = {
+    'meeting': 'Reunião',
+    'sermon': 'Sermão',
+    'interview': 'Entrevista',
+    'lecture': 'Palestra',
+    'note': 'Nota Pessoal',
+};
+
+const formatLabels: { [key in RefineOutputFormat]: string } = {
+    'report': 'Relatório Detalhado',
+    'article': 'Artigo Envolvente',
+    'key-points': 'Resumo de Pontos-Chave',
+    'action-items': 'Lista de Ações',
+};
+
+const getRefinedTitle = (contentType?: string, outputFormat?: string): string => {
+    if (!contentType || !outputFormat) {
+        return 'Documento Refinado';
+    }
+    const contentLabel = contentLabels[contentType as RefineContentType] || 'Conteúdo';
+    const formatLabel = formatLabels[outputFormat as RefineOutputFormat] || 'Documento';
+
+    return `${formatLabel} (${contentLabel})`;
 };
 
 const getCurrentPage = () => window.location.hash.replace(/^#\/?/, '') || 'home';
@@ -56,6 +84,7 @@ const App: React.FC = () => {
   const [nowPlaying, setNowPlaying] = useState<AudioRecording | null>(null);
   const [nowPlayingUrl, setNowPlayingUrl] = useState<string | null>(null);
   const [currentAudioId, setCurrentAudioId] = useState<string | null>(null);
+  const [currentTranscriptionId, setCurrentTranscriptionId] = useState<string | null>(null);
   const [recentTranscriptions, setRecentTranscriptions] = useState<Transcription[]>([]);
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   
@@ -63,10 +92,60 @@ const App: React.FC = () => {
   const [audioDuration, setAudioDuration] = useState<number>(0);
   const [processingTime, setProcessingTime] = useState<string | null>(null);
 
+  // State for Advanced Refinement
+  const [isRefineModalOpen, setIsRefineModalOpen] = useState(false);
+  const [isRefining, setIsRefining] = useState(false);
+  const [advancedTranscript, setAdvancedTranscript] = useState<string>('');
+  const [advancedTranscriptTitle, setAdvancedTranscriptTitle] = useState<string>('');
+
   const isEffectivelyDark = theme === 'dark';
 
   const MAX_FILE_SIZE_MB = 100;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+
+  const loadTranscriptionForEditing = async (id: string) => {
+    try {
+        const transcription = await getTranscriptionById(id);
+        if (!transcription) {
+            throw new Error("A transcrição não foi encontrada.");
+        }
+
+        let audioForPlayer: AudioRecording | null = null;
+        if (transcription.audioId) {
+            audioForPlayer = await getAudioFile(transcription.audioId);
+        }
+
+        handleReset();
+
+        if (audioForPlayer) {
+            const file = new File([audioForPlayer.audioBlob], audioForPlayer.name, { type: audioForPlayer.audioBlob.type });
+            setAudioFile(file);
+            setAudioUrl(URL.createObjectURL(file));
+            setCurrentAudioId(audioForPlayer.id);
+            try {
+                const duration = await getAudioDuration(file);
+                setAudioDuration(duration);
+            } catch {
+                // Ignore duration errors on reload
+            }
+        }
+
+        setRawTranscript(transcription.rawTranscript);
+        setCleanedTranscript(transcription.cleanedTranscript);
+        if (transcription.refinedTranscript && transcription.refinedContentType && transcription.refinedOutputFormat) {
+            setAdvancedTranscript(transcription.refinedTranscript);
+            setAdvancedTranscriptTitle(getRefinedTitle(transcription.refinedContentType, transcription.refinedOutputFormat));
+        }
+        
+        setCurrentTranscriptionId(transcription.id);
+        setProcessStage('completed'); // Set the state to show results
+    } catch (err) {
+        console.error(err);
+        setError("Não foi possível carregar a transcrição para edição.");
+        window.location.hash = '#/history'; // Redirect back if loading fails
+    }
+  };
+
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -89,7 +168,14 @@ const App: React.FC = () => {
             }
         }
     };
-    loadRecents();
+    
+    const loadId = sessionStorage.getItem('loadTranscriptionId');
+    if (page === 'home' && loadId) {
+        sessionStorage.removeItem('loadTranscriptionId');
+        loadTranscriptionForEditing(loadId);
+    } else {
+       loadRecents();
+    }
   }, [page]);
 
   // This useEffect runs once on mount to detect PWA, load theme, and handle initial loading animation.
@@ -231,9 +317,15 @@ const App: React.FC = () => {
     setFileSelectionSuccess(false);
     setOutputPreference('both');
     setCurrentAudioId(null);
+    setCurrentTranscriptionId(null);
     setAudioDuration(0);
     setProcessingTime(null);
     handleCloseNowPlaying();
+    // Reset refinement state
+    setIsRefineModalOpen(false);
+    setIsRefining(false);
+    setAdvancedTranscript('');
+    setAdvancedTranscriptTitle('');
   }, [audioUrl, handleCloseNowPlaying]);
 
   const handleFileChange = async (file: File | null) => {
@@ -369,6 +461,13 @@ const App: React.FC = () => {
         };
         await addAudioFile(newAudioFile);
         audioId = newAudioFile.id;
+      } else {
+        // This is an existing audio file. Check for and delete any old transcription
+        // associated with it before creating a new one.
+        const oldTranscription = (await getAllTranscriptions()).find(t => t.audioId === audioId);
+        if (oldTranscription) {
+            await deleteTranscription(oldTranscription.id);
+        }
       }
 
       const audioBase64 = await blobToBase64(audioToProcess);
@@ -437,6 +536,7 @@ const App: React.FC = () => {
           audioId: audioId,
           isFavorite: false,
         });
+        setCurrentTranscriptionId(transcriptionId);
       }
   
     } catch (err) {
@@ -445,6 +545,49 @@ const App: React.FC = () => {
       setProcessStage('idle');
     }
   }, [audioFile, initialPrecision, currentAudioId, handleCloseNowPlaying, preferredLanguage, audioDuration]);
+
+  const handleRefine = async (contentType: RefineContentType, outputFormat: RefineOutputFormat) => {
+    if (!rawTranscript) {
+      setError('Não há texto literal para refinar.');
+      return;
+    }
+
+    setIsRefining(true);
+    setError(null);
+    setAdvancedTranscript('');
+    
+    setAdvancedTranscriptTitle(getRefinedTitle(contentType, outputFormat));
+
+    let fullRefinedText = '';
+    let refinementError: Error | null = null;
+
+    try {
+      for await (const chunk of refineTranscript(rawTranscript, contentType, outputFormat, preferredLanguage)) {
+          fullRefinedText += chunk;
+          setAdvancedTranscript(fullRefinedText);
+      }
+    } catch (err) {
+      refinementError = err as Error;
+      const friendlyMessage = getFriendlyErrorMessage(err);
+      setError(`Ocorreu um erro durante o refinamento: ${friendlyMessage}`);
+    } finally {
+      setIsRefining(false);
+      setIsRefineModalOpen(false);
+
+      if (currentTranscriptionId && !refinementError) {
+          try {
+              await updateTranscription(currentTranscriptionId, {
+                  refinedTranscript: fullRefinedText,
+                  refinedContentType: contentType,
+                  refinedOutputFormat: outputFormat,
+              });
+          } catch (dbError) {
+              console.error("Failed to save refinement:", dbError);
+              // Optionally show a non-blocking error to the user, for now logging is sufficient
+          }
+      }
+    }
+  };
 
   const handleToggleTranscript = (transcriptType: 'raw' | 'cleaned') => {
     setExpandedTranscript(current => (current === transcriptType ? 'none' : transcriptType));
@@ -468,13 +611,15 @@ const App: React.FC = () => {
   };
   
   const isProcessing = processStage === 'transcribing' || processStage === 'cleaning';
-  const isAccordionMode = processStage === 'completed';
-  const finalDisplayIsSingleColumn = processStage === 'completed' && outputPreference !== 'both';
+  const isAccordionMode = processStage === 'completed' && !advancedTranscript;
+  const finalDisplayIsSingleColumn = (processStage === 'completed' && outputPreference !== 'both') || !!advancedTranscript;
 
   const renderPage = () => {
     switch (page) {
       case 'login':
         return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+      case 'signup':
+        return <SignUpPage onSignUpSuccess={handleLoginSuccess} />;
       case 'history':
         return <HistoryPage />;
       case 'recordings':
@@ -486,13 +631,14 @@ const App: React.FC = () => {
       case 'home':
       default:
         const recentHistorySection = (
-            <div className="max-w-3xl mx-auto w-full mt-8 pt-8 border-t border-gray-200 dark:border-gray-700 animate-fade-in">
+            <div className="w-full mt-8 lg:mt-0 animate-fade-in">
+              <div className="bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
                 <h4 className="text-left text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">Histórico Recente</h4>
                 {recentTranscriptions.length > 0 ? (
                     <ul className="divide-y divide-gray-200 dark:divide-gray-700">
                         {recentTranscriptions.map(t => (
                             <li key={t.id}>
-                                <button onClick={() => handleHistoryClick(t.id)} className="w-full text-left flex justify-between items-center py-3 hover:bg-gray-100/50 dark:hover:bg-gray-700/20 rounded-md transition-colors">
+                                <button onClick={() => handleHistoryClick(t.id)} className="w-full text-left flex justify-between items-center py-3 hover:bg-gray-100/50 dark:hover:bg-gray-700/20 rounded-md transition-colors -mx-2 px-2">
                                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate pr-4" title={t.filename}>{t.filename}</span>
                                     <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
                                         {new Date(t.date).toLocaleString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -506,44 +652,49 @@ const App: React.FC = () => {
                         <p className="text-sm text-gray-500 dark:text-gray-400">Nenhuma transcrição recente encontrada.</p>
                     </div>
                 )}
+              </div>
             </div>
         );
         return (
-          <main className="container mx-auto px-4 py-8 flex-grow flex flex-col">
+          <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow flex flex-col">
             {!audioFile && (
-              <div className="flex-grow flex flex-col">
-                <div className="flex-grow flex flex-col justify-center items-center">
-                    <div className="max-w-3xl mx-auto w-full bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
-                      <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
-                        <FileUpload key={fileInputKey} onFileChange={handleFileChange} disabled={isProcessing} fileSelected={fileSelectionSuccess} />
-                      </div>
-                      <p className="text-gray-500 dark:text-gray-400 text-xs mt-4 text-center">
-                        Ficheiros de áudio suportados (.mp3, .wav, .m4a, etc.) com um limite de {MAX_FILE_SIZE_MB}MB.
-                      </p>
-                      {preferredLanguage !== 'pt' && (
-                          <div className="text-center text-sm text-cyan-700 dark:text-cyan-400 mt-4 bg-cyan-50 dark:bg-cyan-900/30 p-3 rounded-lg border border-cyan-100 dark:border-cyan-800">
-                              <InfoIcon className="w-4 h-4 inline-block mr-2 align-middle" />
-                              <span className="align-middle">Nota: A transcrição final será entregue em <strong>{languageMap[preferredLanguage]}</strong>.</span>
+              <div className="flex-grow lg:grid lg:grid-cols-3 lg:gap-12 lg:items-start">
+                <div className="lg:col-span-2 flex-grow flex flex-col justify-center h-full">
+                    <div className="flex-grow flex flex-col justify-center items-center">
+                        <div className="max-w-3xl mx-auto w-full bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
+                          <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
+                            <FileUpload key={fileInputKey} onFileChange={handleFileChange} disabled={isProcessing} fileSelected={fileSelectionSuccess} />
                           </div>
-                      )}
-                    </div>
-                    <div className="my-4 flex items-center w-full max-w-xs text-center" aria-hidden="true">
-                        <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
-                        <span className="flex-shrink mx-4 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Ou</span>
-                        <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
-                    </div>
-                    <div className="text-center text-sm text-gray-600 dark:text-gray-400">
-                        Pode <button onClick={() => window.location.hash = '#/recordings'} className="font-medium text-[#24a9c5] hover:underline focus:outline-none focus:ring-1 focus:ring-[#24a9c5] rounded">gravar um áudio</button>.
+                          <p className="text-gray-500 dark:text-gray-400 text-xs mt-4 text-center">
+                            Ficheiros de áudio suportados (.mp3, .wav, .m4a, etc.) com um limite de {MAX_FILE_SIZE_MB}MB.
+                          </p>
+                          {preferredLanguage !== 'pt' && (
+                              <div className="text-center text-sm text-cyan-700 dark:text-cyan-400 mt-4 bg-cyan-50 dark:bg-cyan-900/30 p-3 rounded-lg border border-cyan-100 dark:border-cyan-800">
+                                  <InfoIcon className="w-4 h-4 inline-block mr-2 align-middle" />
+                                  <span className="align-middle">Nota: A transcrição final será entregue em <strong>{languageMap[preferredLanguage]}</strong>.</span>
+                              </div>
+                          )}
+                        </div>
+                        <div className="my-4 flex items-center w-full max-w-xs text-center" aria-hidden="true">
+                            <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                            <span className="flex-shrink mx-4 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Ou</span>
+                            <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                        </div>
+                        <div className="text-center text-sm text-gray-600 dark:text-gray-400">
+                            Pode <button onClick={() => window.location.hash = '#/recordings'} className="font-medium text-[#24a9c5] hover:underline focus:outline-none focus:ring-1 focus:ring-[#24a9c5] rounded">gravar um áudio</button>.
+                        </div>
                     </div>
                 </div>
-                {recentHistorySection}
+                <aside className="lg:col-span-1 lg:sticky lg:top-24">
+                  {recentHistorySection}
+                </aside>
               </div>
             )}
 
             {audioFile && processStage === 'idle' && (
-              <div className="flex-grow flex flex-col">
-                  <div className="flex-grow flex flex-col justify-center items-center">
-                    <div className="max-w-3xl mx-auto animate-fade-in-up w-full">
+              <div className="max-w-5xl mx-auto animate-fade-in-up w-full">
+                <div className="lg:grid lg:grid-cols-5 lg:gap-8 items-start">
+                    <div className="lg:col-span-3">
                         <div className="bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
                             <h2 className="text-xl font-bold text-center text-gray-800 dark:text-gray-200 mb-4">Ficheiro Pronto a Processar</h2>
                             <p className="text-center text-gray-600 dark:text-gray-400 break-words mb-4">{audioFile.name}</p>
@@ -551,7 +702,9 @@ const App: React.FC = () => {
                               <CustomAudioPlayer src={audioUrl} />
                             )}
                         </div>
-                        <div className="mt-6 text-left p-4 bg-white/60 dark:bg-gray-800/60 border border-gray-200/80 dark:border-gray-700/80 rounded-lg shadow-lg">
+                    </div>
+                    <div className="lg:col-span-2 mt-6 lg:mt-0">
+                       <div className="text-left p-4 bg-white/60 dark:bg-gray-800/60 border border-gray-200/80 dark:border-gray-700/80 rounded-lg shadow-lg">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               {estimatedTime && (
                                   <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
@@ -586,18 +739,17 @@ const App: React.FC = () => {
                             </div>
                           </div>
                         </div>
-                        <div className="mt-8 flex flex-col gap-3 items-center justify-center">
-                          <button onClick={handleProcessAudio} disabled={isProcessing} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#24a9c5] text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-[#1e8a9f] disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105">
-                            <ArrowRightIcon className="w-5 h-5" />
-                            <span>Iniciar Processo</span>
-                          </button>
-                          <button onClick={handleReset} className="text-sm text-gray-500 dark:text-gray-400 hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-900 rounded-md p-1">
-                            Substituir Áudio
-                          </button>
-                        </div>
                     </div>
-                  </div>
-                {recentHistorySection}
+                </div>
+                <div className="mt-8 flex flex-col gap-3 items-center justify-center">
+                  <button onClick={handleProcessAudio} disabled={isProcessing} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#24a9c5] text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-[#1e8a9f] disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105">
+                    <ArrowRightIcon className="w-5 h-5" />
+                    <span>Iniciar Processo</span>
+                  </button>
+                  <button onClick={handleReset} className="text-sm text-gray-500 dark:text-gray-400 hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-900 rounded-md p-1">
+                    Substituir Áudio
+                  </button>
+                </div>
               </div>
             )}
             
@@ -640,6 +792,7 @@ const App: React.FC = () => {
                                     <ClockIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
                                     <div>
                                         <p className="font-semibold">Tempo de Processamento</p>
+
                                         <p className="text-gray-600 dark:text-gray-400">{processingTime}</p>
                                     </div>
                                 </div>
@@ -676,8 +829,8 @@ const App: React.FC = () => {
               </div>
             )}
             
-            {(rawTranscript || cleanedTranscript || isProcessing) && (
-                <div className={`mt-12 grid grid-cols-1 ${finalDisplayIsSingleColumn ? 'lg:grid-cols-1' : 'lg:grid-cols-2'} gap-8`}>
+            {(rawTranscript || cleanedTranscript || isProcessing || advancedTranscript || isRefining) && (
+                <div className={`mt-12 grid grid-cols-1 ${!advancedTranscript && !isRefining && (finalDisplayIsSingleColumn ? 'lg:grid-cols-1' : 'lg:grid-cols-2')} gap-8`}>
                     {(isProcessing || (processStage === 'completed' && (outputPreference === 'raw' || outputPreference === 'both'))) && <TranscriptDisplay 
                         title="Texto Literal"
                         text={rawTranscript}
@@ -698,6 +851,19 @@ const App: React.FC = () => {
                         isClickable={isAccordionMode}
                         onToggle={() => handleToggleTranscript('cleaned')}
                     />}
+                     {(advancedTranscript || isRefining) && (
+                        <TranscriptDisplay 
+                            title={advancedTranscriptTitle || 'Documento Refinado'}
+                            text={advancedTranscript}
+                            isLoading={isRefining}
+                            isComplete={!isRefining && advancedTranscript.length > 0}
+                            placeholder="O resultado do refinamento aparecerá aqui."
+                            renderAsHTML={true}
+                            isExpanded={true}
+                            isClickable={false}
+                            onToggle={() => {}}
+                        />
+                    )}
                 </div>
             )}
 
@@ -705,11 +871,19 @@ const App: React.FC = () => {
                 <div className="mt-12 text-center animate-fade-in-up">
                     <button
                         onClick={handleReset}
-                        className="w-full sm:w-auto flex items-center justify-center gap-2 mx-auto bg-[#24a9c5] text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-[#1e8a9f] transition-all duration-300 transform hover:scale-105"
+                        className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#24a9c5] text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-[#1e8a9f] transition-all"
                     >
                         <ReloadIcon className="w-5 h-5" />
                         <span>Transcrever Novo Ficheiro</span>
                     </button>
+                    <div className="mt-4">
+                        <button
+                            onClick={() => setIsRefineModalOpen(true)}
+                            className="font-bold text-[#24a9c5] hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-900 rounded-md p-1"
+                        >
+                            ou faça um Refinamento Avançado
+                        </button>
+                    </div>
                 </div>
             )}
           </main>
@@ -720,23 +894,27 @@ const App: React.FC = () => {
   return (
     <>
       <div className={`min-h-screen flex flex-col transition-opacity duration-500 ease-in-out ${isAppVisible ? 'opacity-100' : 'opacity-0'} ${nowPlaying ? 'pb-24 sm:pb-20' : ''}`}>
-        <Header 
-          page={page} 
-          theme={theme} 
-          setTheme={setTheme} 
-          preferredLanguage={preferredLanguage} 
-          setPreferredLanguage={handleSetPreferredLanguage}
-          currentUser={currentUser}
-          onLogout={handleLogout}
-        />
+        {page !== 'login' && page !== 'signup' && (
+          <Header 
+            page={page} 
+            theme={theme} 
+            setTheme={setTheme} 
+            preferredLanguage={preferredLanguage} 
+            setPreferredLanguage={handleSetPreferredLanguage}
+            currentUser={currentUser}
+            onLogout={handleLogout}
+          />
+        )}
         {renderPage()}
-        <footer className="hidden sm:block text-center py-6 text-gray-500 dark:text-gray-400 text-sm select-none">
-          <p>
-            © {new Date().getFullYear()} Longani &middot; v0.9.2
-          </p>
-        </footer>
+        {page !== 'login' && page !== 'signup' && (
+            <footer className="hidden sm:block text-center py-6 text-gray-500 dark:text-gray-400 text-sm select-none">
+                <p>
+                    © {new Date().getFullYear()} Longani &middot; v0.9.2
+                </p>
+            </footer>
+        )}
       </div>
-      {nowPlaying && nowPlayingUrl && (
+      {nowPlaying && nowPlayingUrl && page !== 'login' && page !== 'signup' && (
         <NowPlayingBar 
           audio={nowPlaying} 
           audioUrl={nowPlayingUrl} 
@@ -752,7 +930,13 @@ const App: React.FC = () => {
             Pressione novamente para sair
           </div>
       )}
-      {isPWA && <ThemeSwitcher setTheme={setTheme} isEffectivelyDark={isEffectivelyDark} />}
+      {isPWA && page !== 'login' && page !== 'signup' && <ThemeSwitcher setTheme={setTheme} isEffectivelyDark={isEffectivelyDark} />}
+       <RefineModal
+        isOpen={isRefineModalOpen}
+        onClose={() => setIsRefineModalOpen(false)}
+        onSubmit={handleRefine}
+        isRefining={isRefining}
+      />
     </>
   );
 };

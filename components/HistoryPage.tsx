@@ -4,13 +4,39 @@ import {
     getAllFolders, addFolder, updateFolder, deleteFolder, Folder, updateAudioFile
 } from '../utils/db';
 import { Loader } from './Loader';
-import { ClipboardIcon, CheckIcon, TrashIcon, ChevronDownIcon, SearchIcon, StarIcon, StarOutlineIcon, MoreVerticalIcon, EditIcon, InfoIcon, CloseIcon } from './Icons';
+import { ClipboardIcon, CheckIcon, TrashIcon, ChevronDownIcon, SearchIcon, StarIcon, StarOutlineIcon, MoreVerticalIcon, EditIcon, InfoIcon, CloseIcon, SparkleIcon } from './Icons';
 import { ConfirmationModal } from './ConfirmationModal';
 import { DropdownMenu } from './DropdownMenu';
 import { PropertiesModal } from './PropertiesModal';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
+import type { RefineContentType, RefineOutputFormat } from '../services/geminiService';
 
 const FOLDER_ID_UNFILED = 'unfiled';
+
+const contentLabels: { [key in RefineContentType]?: string } = {
+    'meeting': 'Reunião',
+    'sermon': 'Sermão',
+    'interview': 'Entrevista',
+    'lecture': 'Palestra',
+    'note': 'Nota Pessoal',
+};
+
+const formatLabels: { [key in RefineOutputFormat]?: string } = {
+    'report': 'Relatório Detalhado',
+    'article': 'Artigo Envolvente',
+    'key-points': 'Resumo de Pontos-Chave',
+    'action-items': 'Lista de Ações',
+};
+
+const getRefinedTitle = (contentType?: string, outputFormat?: string): string => {
+    if (!contentType || !outputFormat) {
+        return 'Documento Refinado';
+    }
+    const contentLabel = contentLabels[contentType as RefineContentType] || 'Conteúdo';
+    const formatLabel = formatLabels[outputFormat as RefineOutputFormat] || 'Documento';
+
+    return `${formatLabel} (${contentLabel})`;
+};
 
 // Sub-component for tag editing
 const TagEditor: React.FC<{ tags: string[]; onUpdate: (tags: string[]) => void }> = ({ tags, onUpdate }) => {
@@ -71,7 +97,9 @@ const TranscriptionItem: React.FC<{
 }> = ({ transcript, folders, onToggle, isExpanded, onDelete, onSetFavorite, onRename, onShowProperties, onUpdateTags, onMoveToFolder, isHighlighted }) => {
     const [copiedRaw, setCopiedRaw] = useState(false);
     const [copiedCleaned, setCopiedCleaned] = useState(false);
+    const [copiedRefined, setCopiedRefined] = useState(false);
     const cleanedContentRef = useRef<HTMLDivElement>(null);
+    const refinedContentRef = useRef<HTMLDivElement>(null);
     const [audio, setAudio] = useState<AudioRecording | null>(null);
     const [audioUrl, setAudioUrl] = useState<string | null>(null);
     const [isLoadingAudio, setIsLoadingAudio] = useState(false);
@@ -107,28 +135,43 @@ const TranscriptionItem: React.FC<{
         }
     }, [isExpanded, transcript.audioId, audio, audioUrl]);
 
-    const handleCopy = (type: 'raw' | 'cleaned') => {
+    const handleCopyToClipboard = (type: 'raw' | 'cleaned' | 'refined') => {
         let textToCopy = '';
-        if (type === 'raw') {
-            textToCopy = transcript.rawTranscript;
-            navigator.clipboard.writeText(textToCopy).then(() => setCopiedRaw(true));
-        } else if (type === 'cleaned' && cleanedContentRef.current) {
-            textToCopy = cleanedContentRef.current.innerText;
-            navigator.clipboard.writeText(textToCopy).then(() => setCopiedCleaned(true));
+        let ref = null;
+        let setCopied = (val: boolean) => {};
+
+        switch (type) {
+            case 'raw':
+                textToCopy = transcript.rawTranscript;
+                setCopied = setCopiedRaw;
+                break;
+            case 'cleaned':
+                ref = cleanedContentRef;
+                setCopied = setCopiedCleaned;
+                break;
+            case 'refined':
+                ref = refinedContentRef;
+                setCopied = setCopiedRefined;
+                break;
+        }
+
+        if (ref?.current) {
+            textToCopy = ref.current.innerText;
+        }
+
+        if (textToCopy) {
+            navigator.clipboard.writeText(textToCopy).then(() => setCopied(true));
         }
     };
     
     useEffect(() => {
         let timer: ReturnType<typeof setTimeout>;
         if (copiedRaw) timer = setTimeout(() => setCopiedRaw(false), 2000);
-        return () => clearTimeout(timer);
-    }, [copiedRaw]);
-
-    useEffect(() => {
-        let timer: ReturnType<typeof setTimeout>;
         if (copiedCleaned) timer = setTimeout(() => setCopiedCleaned(false), 2000);
+        if (copiedRefined) timer = setTimeout(() => setCopiedRefined(false), 2000);
         return () => clearTimeout(timer);
-    }, [copiedCleaned]);
+    }, [copiedRaw, copiedCleaned, copiedRefined]);
+
 
     const handleRenameConfirm = () => {
         if (newName.trim() && newName.trim() !== transcript.filename) {
@@ -145,7 +188,13 @@ const TranscriptionItem: React.FC<{
         }
     };
     
+    const handleRefineAndEdit = () => {
+        sessionStorage.setItem('loadTranscriptionId', transcript.id);
+        window.location.hash = '#/home';
+    };
+
     const dropdownOptions = [
+        { label: 'Refinar/Editar na Página Principal', icon: <SparkleIcon className="w-4 h-4" />, onClick: handleRefineAndEdit },
         { label: 'Renomear', icon: <EditIcon className="w-4 h-4" />, onClick: () => setIsRenaming(true) },
         { label: 'Propriedades', icon: <InfoIcon className="w-4 h-4" />, onClick: onShowProperties },
         { label: 'Mover para Pasta...', icon: <InfoIcon className="w-4 h-4" />,
@@ -205,7 +254,7 @@ const TranscriptionItem: React.FC<{
           />
         </div>
       </header>
-      <div className={`transition-[max-height] duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[200vh]' : 'max-h-0'}`}>
+      <div className={`transition-[max-height] duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[300vh]' : 'max-h-0'}`}>
         <div className="border-t border-gray-200 dark:border-gray-700 p-4 md:p-6 space-y-6">
             {isLoadingAudio && <div className="py-4 text-center"><Loader className="w-6 h-6 text-[#24a9c5]" /></div>}
             {audioUrl && audio && (
@@ -221,19 +270,30 @@ const TranscriptionItem: React.FC<{
           <div>
             <div className="flex justify-between items-center mb-2">
                 <h3 className="font-semibold text-gray-700 dark:text-gray-300">Texto Literal</h3>
-                <button onClick={() => handleCopy('raw')} className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"><span className="sr-only">Copiar texto literal</span>{copiedRaw ? <CheckIcon className="w-5 h-5 text-green-500" /> : <ClipboardIcon className="w-5 h-5" />}</button>
+                <button onClick={() => handleCopyToClipboard('raw')} className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"><span className="sr-only">Copiar texto literal</span>{copiedRaw ? <CheckIcon className="w-5 h-5 text-green-500" /> : <ClipboardIcon className="w-5 h-5" />}</button>
             </div>
             <div className="max-h-80 overflow-y-auto p-3 bg-gray-50 dark:bg-gray-900/50 rounded-md border"><p className="whitespace-pre-wrap font-mono text-sm text-gray-600 dark:text-gray-400">{transcript.rawTranscript}</p></div>
           </div>
           <div>
             <div className="flex justify-between items-center mb-2">
                 <h3 className="font-semibold text-gray-700 dark:text-gray-300">Texto Formatado</h3>
-                 <button onClick={() => handleCopy('cleaned')} className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"><span className="sr-only">Copiar texto formatado</span>{copiedCleaned ? <CheckIcon className="w-5 h-5 text-green-500" /> : <ClipboardIcon className="w-5 h-5" />}</button>
+                 <button onClick={() => handleCopyToClipboard('cleaned')} className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"><span className="sr-only">Copiar texto formatado</span>{copiedCleaned ? <CheckIcon className="w-5 h-5 text-green-500" /> : <ClipboardIcon className="w-5 h-5" />}</button>
             </div>
             <div className="max-h-80 overflow-y-auto p-3 bg-gray-50 dark:bg-gray-900/50 rounded-md border">
                <div ref={cleanedContentRef} className="prose prose-p:text-gray-600 prose-headings:text-gray-800 prose-strong:text-gray-900 prose-ul:text-gray-600 prose-li:marker:text-[#24a9c5] prose-a:text-[#24a9c5] hover:prose-a:text-[#1e8a9f] dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: transcript.cleanedTranscript }}/>
             </div>
           </div>
+          {transcript.refinedTranscript && (
+             <div>
+                <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-semibold text-gray-700 dark:text-gray-300">{getRefinedTitle(transcript.refinedContentType, transcript.refinedOutputFormat)}</h3>
+                    <button onClick={() => handleCopyToClipboard('refined')} className="p-2 rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400"><span className="sr-only">Copiar documento refinado</span>{copiedRefined ? <CheckIcon className="w-5 h-5 text-green-500" /> : <ClipboardIcon className="w-5 h-5" />}</button>
+                </div>
+                <div className="max-h-80 overflow-y-auto p-3 bg-gray-50 dark:bg-gray-900/50 rounded-md border">
+                   <div ref={refinedContentRef} className="prose prose-p:text-gray-600 prose-headings:text-gray-800 prose-strong:text-gray-900 prose-ul:text-gray-600 prose-li:marker:text-[#24a9c5] prose-a:text-[#24a9c5] hover:prose-a:text-[#1e8a9f] dark:prose-invert max-w-none" dangerouslySetInnerHTML={{ __html: transcript.refinedTranscript }}/>
+                </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -281,6 +341,7 @@ export const HistoryPage: React.FC = () => {
     const idToHighlight = sessionStorage.getItem('highlightTranscriptionId');
     if (idToHighlight) {
         setHighlightedId(idToHighlight);
+        setExpandedId(idToHighlight);
         sessionStorage.removeItem('highlightTranscriptionId'); // Clean up
 
         // Wait for render to complete before scrolling
@@ -382,9 +443,9 @@ export const HistoryPage: React.FC = () => {
 
   return (
     <>
-      <main className="container mx-auto px-4 py-8 flex-grow">
+      <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
         <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200 mb-6">Minhas Transcrições</h1>
-        <div className="flex flex-col md:flex-row gap-8">
+        <div className="flex flex-col md:flex-row gap-8 lg:gap-12">
             {/* Sidebar */}
             <aside className="md:w-64 flex-shrink-0 space-y-6">
                 {/* Folders */}

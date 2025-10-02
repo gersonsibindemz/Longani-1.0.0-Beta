@@ -123,6 +123,7 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
   const [isDeleting, setIsDeleting] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [propertiesItem, setPropertiesItem] = useState<AudioRecording | null>(null);
+  const [retranscribeConfirm, setRetranscribeConfirm] = useState<AudioRecording | null>(null);
 
   const loadData = async () => {
     try {
@@ -154,6 +155,10 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
         if (!mimeType) return 'wav'; // Default fallback
         // e.g., 'audio/webm;codecs=opus' -> 'webm'
         const subtype = mimeType.split('/')[1]?.split(';')[0];
+        // Use .m4a for mp4 audio files, which is a common convention
+        if (subtype === 'mp4') {
+            return 'm4a';
+        }
         return subtype || 'wav'; // Fallback for cases like 'audio/' or malformed types
     };
     const extension = getFileExtension(audioBlob.type);
@@ -220,6 +225,22 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
     }
   };
 
+  const handleTranscribeRequest = (audio: AudioRecording) => {
+    const existingTranscription = allTranscriptions.find(t => t.audioId === audio.id);
+    if (existingTranscription) {
+        setRetranscribeConfirm(audio);
+    } else {
+        onTranscribe(audio);
+    }
+  };
+
+  const handleConfirmRetranscribe = () => {
+    if (retranscribeConfirm) {
+        onTranscribe(retranscribeConfirm);
+        setRetranscribeConfirm(null);
+    }
+  };
+
   const { uploads, recordings } = useMemo(() => {
     const filteredFiles = searchQuery
       ? allAudioFiles.filter(file => file.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -240,103 +261,105 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
 
   return (
     <>
-      <main className="container mx-auto px-4 py-8 flex-grow">
-        <div className="max-w-3xl mx-auto">
+      <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200 mb-6">
             Gravações
           </h1>
-
-          <div className="mb-8">
-            <VoiceRecorder onSave={handleSaveRecording} />
-          </div>
-
-          <div className="mb-8 relative">
-            <input
-              type="search"
-              placeholder="Pesquisar por nome do ficheiro..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 text-gray-700 bg-white/80 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#24a9c5] dark:bg-gray-800/80 dark:text-gray-200 dark:border-gray-600 dark:placeholder-gray-400"
-            />
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <SearchIcon className="w-5 h-5 text-gray-400" />
-            </div>
-          </div>
-
-          {isLoading && (
-            <div className="flex justify-center items-center py-10">
-              <Loader className="w-10 h-10 text-[#24a9c5]" />
-            </div>
-          )}
-
-          {error && (
-              <div className="text-center text-red-800 bg-red-100 p-4 rounded-lg border border-red-200 dark:bg-red-900/50 dark:text-red-300 dark:border-red-800/50">
-                  {error}
+          <div className="lg:grid lg:grid-cols-3 lg:gap-8 items-start">
+            <div className="lg:col-span-1 lg:sticky lg:top-24">
+              <div className="mb-8">
+                <VoiceRecorder onSave={handleSaveRecording} />
               </div>
-          )}
+            </div>
+            <div className="lg:col-span-2 mt-8 lg:mt-0">
+              <div className="mb-8 relative">
+                <input
+                  type="search"
+                  placeholder="Pesquisar por nome do ficheiro..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2 text-gray-700 bg-white/80 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#24a9c5] dark:bg-gray-800/80 dark:text-gray-200 dark:border-gray-600 dark:placeholder-gray-400"
+                />
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <SearchIcon className="w-5 h-5 text-gray-400" />
+                </div>
+              </div>
 
-          {!isLoading && !error && (
-            <div className="space-y-8">
-              {/* Uploaded Files Section */}
-              <div>
-                <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
-                  Ficheiros Carregados
-                </h2>
-                {uploads.length > 0 ? (
-                  <div className="space-y-3">
-                    {uploads.map((audio) => (
-                      <AudioItem 
-                        key={audio.id} 
-                        audio={audio} 
-                        onDelete={() => promptForDelete(audio.id)} 
-                        onTranscribe={() => onTranscribe(audio)}
-                        onPlayAudio={onPlayAudio}
-                        onSetFavorite={(isFav) => handleSetFavorite(audio.id, isFav)}
-                        onRename={handleRename}
-                        onShowProperties={() => setPropertiesItem(audio)}
-                        allTranscriptions={allTranscriptions}
-                        onViewTranscription={handleViewTranscription}
-                      />
-                    ))}
+              {isLoading && (
+                <div className="flex justify-center items-center py-10">
+                  <Loader className="w-10 h-10 text-[#24a9c5]" />
+                </div>
+              )}
+
+              {error && (
+                  <div className="text-center text-red-800 bg-red-100 p-4 rounded-lg border border-red-200 dark:bg-red-900/50 dark:text-red-300 dark:border-red-800/50">
+                      {error}
                   </div>
-                ) : (
-                  <p className="text-gray-500 dark:text-gray-400 text-center py-4">
-                    {searchQuery ? `Nenhum ficheiro carregado encontrado para "${searchQuery}".` : 'Nenhum ficheiro carregado foi encontrado.'}
-                  </p>
-                )}
-              </div>
+              )}
 
-              {/* Saved Recordings Section */}
-              <div>
-                <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
-                  Gravações Salvas
-                </h2>
-                {recordings.length > 0 ? (
-                  <div className="space-y-3">
-                    {recordings.map((audio) => (
-                      <AudioItem 
-                        key={audio.id} 
-                        audio={audio} 
-                        onDelete={() => promptForDelete(audio.id)} 
-                        onTranscribe={() => onTranscribe(audio)} 
-                        onPlayAudio={onPlayAudio}
-                        onSetFavorite={(isFav) => handleSetFavorite(audio.id, isFav)}
-                        onRename={handleRename}
-                        onShowProperties={() => setPropertiesItem(audio)}
-                        allTranscriptions={allTranscriptions}
-                        onViewTranscription={handleViewTranscription}
-                      />
-                    ))}
+              {!isLoading && !error && (
+                <div className="space-y-8">
+                  {/* Uploaded Files Section */}
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
+                      Ficheiros Carregados
+                    </h2>
+                    {uploads.length > 0 ? (
+                      <div className="space-y-3">
+                        {uploads.map((audio) => (
+                          <AudioItem 
+                            key={audio.id} 
+                            audio={audio} 
+                            onDelete={() => promptForDelete(audio.id)} 
+                            onTranscribe={() => handleTranscribeRequest(audio)}
+                            onPlayAudio={onPlayAudio}
+                            onSetFavorite={(isFav) => handleSetFavorite(audio.id, isFav)}
+                            onRename={handleRename}
+                            onShowProperties={() => setPropertiesItem(audio)}
+                            allTranscriptions={allTranscriptions}
+                            onViewTranscription={handleViewTranscription}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 dark:text-gray-400 text-center py-4">
+                        {searchQuery ? `Nenhum ficheiro carregado encontrado para "${searchQuery}".` : 'Nenhum ficheiro carregado foi encontrado.'}
+                      </p>
+                    )}
                   </div>
-                ) : (
-                   <p className="text-gray-500 dark:text-gray-400 text-center py-4">
-                    {searchQuery ? `Nenhuma gravação encontrada para "${searchQuery}".` : 'Nenhuma gravação foi encontrada.'}
-                   </p>
-                )}
-              </div>
+
+                  {/* Saved Recordings Section */}
+                  <div>
+                    <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
+                      Gravações Salvas
+                    </h2>
+                    {recordings.length > 0 ? (
+                      <div className="space-y-3">
+                        {recordings.map((audio) => (
+                          <AudioItem 
+                            key={audio.id} 
+                            audio={audio} 
+                            onDelete={() => promptForDelete(audio.id)} 
+                            onTranscribe={() => handleTranscribeRequest(audio)} 
+                            onPlayAudio={onPlayAudio}
+                            onSetFavorite={(isFav) => handleSetFavorite(audio.id, isFav)}
+                            onRename={handleRename}
+                            onShowProperties={() => setPropertiesItem(audio)}
+                            allTranscriptions={allTranscriptions}
+                            onViewTranscription={handleViewTranscription}
+                          />
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 dark:text-gray-400 text-center py-4">
+                        {searchQuery ? `Nenhuma gravação encontrada para "${searchQuery}".` : 'Nenhuma gravação foi encontrada.'}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
       </main>
       <ConfirmationModal
         isOpen={!!deleteTargetId}
@@ -345,6 +368,14 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
         isConfirming={isDeleting}
         title="Apagar Ficheiro de Áudio"
         message="Tem a certeza de que deseja apagar permanentemente este ficheiro de áudio? Esta ação não pode ser desfeita."
+      />
+      <ConfirmationModal
+        isOpen={!!retranscribeConfirm}
+        onClose={() => setRetranscribeConfirm(null)}
+        onConfirm={handleConfirmRetranscribe}
+        isConfirming={false}
+        title="Substituir Transcrição"
+        message="Este áudio já foi transcrito. Iniciar um novo processo irá apagar a transcrição antiga permanentemente. Deseja continuar?"
       />
       <PropertiesModal item={propertiesItem} onClose={() => setPropertiesItem(null)} />
     </>

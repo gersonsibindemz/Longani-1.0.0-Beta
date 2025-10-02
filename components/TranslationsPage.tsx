@@ -218,8 +218,8 @@ export const TranslationsPage: React.FC = () => {
     };
 
     return (
-        <main className="container mx-auto px-4 py-8 flex-grow">
-            <div className="max-w-4xl mx-auto">
+        <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
+            <div className="max-w-6xl mx-auto">
                 <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200 mb-6">
                     Traduções
                 </h1>
@@ -330,7 +330,7 @@ export const TranslationsPage: React.FC = () => {
                                 Traduções Salvas
                             </h2>
                             {savedTranslations.length > 0 ? (
-                                <div className="space-y-3">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                                     {savedTranslations.map(t => (
                                         <SavedTranslationItem 
                                             key={t.id}

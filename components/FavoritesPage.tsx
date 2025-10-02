@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
     getAllFavorites, 
+    getAllTranscriptions,
     deleteTranscription, 
     updateTranscription, 
     deleteAudioFile,
@@ -193,20 +194,26 @@ const FavoriteAudioItem: React.FC<{
 export const FavoritesPage: React.FC<FavoritesPageProps> = ({ onTranscribe, onPlayAudio }) => {
   const [transcripts, setTranscripts] = useState<Transcription[]>([]);
   const [audioFiles, setAudioFiles] = useState<AudioRecording[]>([]);
+  const [allTranscriptions, setAllTranscriptions] = useState<Transcription[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<FavoriteFilter>('all');
   const [deleteTarget, setDeleteTarget] = useState<{id: string; type: 'transcription' | 'audio'} | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [propertiesItem, setPropertiesItem] = useState<Transcription | AudioRecording | null>(null);
+  const [retranscribeConfirm, setRetranscribeConfirm] = useState<AudioRecording | null>(null);
 
   const loadFavorites = async () => {
     try {
       setIsLoading(true);
       setError(null);
-      const { transcriptions, audioFiles } = await getAllFavorites();
+      const [{ transcriptions, audioFiles }, allTrans] = await Promise.all([
+        getAllFavorites(),
+        getAllTranscriptions()
+      ]);
       setTranscripts(transcriptions);
       setAudioFiles(audioFiles);
+      setAllTranscriptions(allTrans);
     } catch (err) {
       setError('Não foi possível carregar os seus favoritos.');
       console.error(err);
@@ -259,6 +266,22 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({ onTranscribe, onPl
     }
   };
 
+  const handleTranscribeRequest = (audio: AudioRecording) => {
+    const existingTranscription = allTranscriptions.find(t => t.audioId === audio.id);
+    if (existingTranscription) {
+        setRetranscribeConfirm(audio);
+    } else {
+        onTranscribe(audio);
+    }
+  };
+
+  const handleConfirmRetranscribe = () => {
+    if (retranscribeConfirm) {
+        onTranscribe(retranscribeConfirm);
+        setRetranscribeConfirm(null);
+    }
+  };
+
   const { filteredTranscripts, filteredAudioFiles } = useMemo(() => {
     return {
         filteredTranscripts: filter === 'all' || filter === 'transcriptions' ? transcripts : [],
@@ -272,8 +295,8 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({ onTranscribe, onPl
 
   return (
     <>
-      <main className="container mx-auto px-4 py-8 flex-grow">
-        <div className="max-w-3xl mx-auto">
+      <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
+        <div className="max-w-5xl mx-auto">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200 mb-6">
             Favoritos
           </h1>
@@ -318,7 +341,7 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({ onTranscribe, onPl
                         <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
                             Transcrições Favoritas
                         </h2>
-                        <div className="space-y-3">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             {filteredTranscripts.map((t) => (
                                 <FavoriteTranscriptionItem 
                                     key={t.id} 
@@ -337,13 +360,13 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({ onTranscribe, onPl
                         <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
                             Gravações Favoritas
                         </h2>
-                        <div className="space-y-3">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                             {filteredAudioFiles.map((audio) => (
                                 <FavoriteAudioItem
                                     key={audio.id}
                                     audio={audio}
                                     onDelete={() => setDeleteTarget({id: audio.id, type: 'audio'})}
-                                    onTranscribe={() => onTranscribe(audio)}
+                                    onTranscribe={() => handleTranscribeRequest(audio)}
                                     onPlayAudio={onPlayAudio}
                                     onSetFavorite={(isFav) => handleSetAudioFavorite(audio.id, isFav)}
                                     onRename={handleRenameAudio}
@@ -364,6 +387,14 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({ onTranscribe, onPl
         isConfirming={isDeleting}
         title="Apagar Item"
         message="Tem a certeza de que deseja apagar permanentemente este item? Esta ação não pode ser desfeita."
+      />
+       <ConfirmationModal
+        isOpen={!!retranscribeConfirm}
+        onClose={() => setRetranscribeConfirm(null)}
+        onConfirm={handleConfirmRetranscribe}
+        isConfirming={false}
+        title="Substituir Transcrição"
+        message="Este áudio já foi transcrito. Iniciar um novo processo irá apagar a transcrição antiga permanentemente. Deseja continuar?"
       />
       <PropertiesModal item={propertiesItem} onClose={() => setPropertiesItem(null)} />
     </>

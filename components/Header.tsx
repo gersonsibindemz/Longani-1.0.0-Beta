@@ -70,7 +70,12 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
         <div className="container mx-auto px-4 flex items-center justify-between">
           {/* Left side: Logo */}
           <div className="flex-shrink-0">
-            <a href="#/home" onClick={handleNavClick} aria-label="Página inicial do Longani">
+            <a
+              href="#/home"
+              onClick={handleNavClick}
+              aria-label="Página inicial do Longani"
+              className="inline-block rounded-md transition-transform duration-150 ease-in-out active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#24a9c5] dark:focus-visible:ring-offset-gray-900"
+            >
               <img
                 src={longaniLogoUrl}
                 alt="Longani Logo"
@@ -92,7 +97,7 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                     page === 'home' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
                   }`}
                 >
-                  Início
+                  Nova Transcrição
                 </a>
               </li>
               <li>
@@ -214,72 +219,77 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
             </div>
             
             {/* Navigation */}
-            <nav className="flex-grow">
-                <ul className="flex flex-col gap-2">
-                    <li>
-                      <a
-                          href="#/home"
-                          onClick={handleNavClick}
-                          className={`block px-4 py-3 rounded-lg text-base font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                            page === 'home' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
-                          }`}
-                      >
-                          Início
-                      </a>
-                    </li>
-                    <li>
-                      <a
-                          href="#/history"
-                          onClick={handleNavClick}
-                          className={`block px-4 py-3 rounded-lg text-base font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                            page === 'history' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
-                          }`}
-                      >
-                          Minhas Transcrições
-                      </a>
-                    </li>
-                    <li>
-                      <a
-                          href="#/recordings"
-                          onClick={handleNavClick}
-                          className={`block px-4 py-3 rounded-lg text-base font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                            page === 'recordings' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
-                          }`}
-                      >
-                          Gravações
-                      </a>
-                    </li>
-                    <li>
-                      <a
-                          href="#/favorites"
-                          onClick={handleNavClick}
-                          className={`block px-4 py-3 rounded-lg text-base font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                            page === 'favorites' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
-                          }`}
-                      >
-                          Favoritos
-                      </a>
-                    </li>
-                     <li>
-                      <a
-                          href="#/translations"
-                          onClick={handleNavClick}
-                          className={`block px-4 py-3 rounded-lg text-base font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                            page === 'translations' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
-                          }`}
-                      >
-                          Traduções
-                      </a>
-                    </li>
-                </ul>
-            </nav>
+            <div className="flex-grow">
+                <h3 className="px-4 text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">
+                    Dashboard
+                </h3>
+                <nav>
+                    <ul className="flex flex-col gap-2">
+                        <li>
+                          <a
+                              href="#/home"
+                              onClick={handleNavClick}
+                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                page === 'home' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                              }`}
+                          >
+                              Nova Transcrição
+                          </a>
+                        </li>
+                        <li>
+                          <a
+                              href="#/history"
+                              onClick={handleNavClick}
+                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                page === 'history' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                              }`}
+                          >
+                              Minhas Transcrições
+                          </a>
+                        </li>
+                        <li>
+                          <a
+                              href="#/recordings"
+                              onClick={handleNavClick}
+                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                page === 'recordings' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                              }`}
+                          >
+                              Gravações
+                          </a>
+                        </li>
+                        <li>
+                          <a
+                              href="#/favorites"
+                              onClick={handleNavClick}
+                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                page === 'favorites' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                              }`}
+                          >
+                              Favoritos
+                          </a>
+                        </li>
+                         <li>
+                          <a
+                              href="#/translations"
+                              onClick={handleNavClick}
+                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                page === 'translations' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                              }`}
+                          >
+                              Traduções
+                          </a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
 
             {/* Logout Section */}
             {currentUser && (
                 <div className="py-2">
                     <button
                         onClick={handleLogoutAndCloseMenu}
-                        className="block w-full text-left px-4 py-3 rounded-lg text-base font-medium text-red-600 dark:text-red-500 hover:bg-red-100 dark:hover:bg-red-800/20 transition-colors"
+                        className="block w-full text-left px-4 py-3 rounded-lg text-sm font-medium text-red-600 dark:text-red-500 hover:bg-red-100 dark:hover:bg-red-800/20 transition-colors"
                     >
                         Sair
                     </button>

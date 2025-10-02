@@ -15,6 +15,9 @@ export interface Transcription {
   isFavorite?: boolean;
   tags?: string[]; // For tagging functionality
   folderId?: string; // For folder organization
+  refinedTranscript?: string;
+  refinedContentType?: string;
+  refinedOutputFormat?: string;
 }
 
 export interface AudioRecording {
@@ -146,6 +149,27 @@ export function addTranscription(transcription: Transcription): Promise<void> {
         reject(error);
     }
   });
+}
+
+export function getTranscriptionById(id: string): Promise<Transcription | undefined> {
+    return new Promise(async (resolve, reject) => {
+      try {
+        const db = await initDB();
+        const transaction = db.transaction(STORE_NAME_TRANSCRIPTIONS, 'readonly');
+        const store = transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
+        const request = store.get(id);
+  
+        request.onsuccess = () => {
+          resolve(request.result);
+        };
+        request.onerror = () => {
+          console.error('Error getting transcription by ID:', request.error);
+          reject('Could not retrieve the transcription.');
+        };
+      } catch (error) {
+        reject(error);
+      }
+    });
 }
 
 export function getAllTranscriptions(): Promise<Transcription[]> {

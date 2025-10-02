@@ -234,8 +234,8 @@ export const StopIcon: React.FC<{className?: string}> = ({className}) => (
 
 export const SparkleIcon: React.FC<{className?: string}> = ({className}) => (
   <span className={`inline-block ${className || ''}`}>
-    <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 26 26" fill="currentColor" overflow="visible">
-        <path d="M19 9l-2.24 4.76L12 16l-4.76-2.24L5 9l2.24-4.76L12 2l4.76 2.24L19 9zm-7 9l-1.24 2.76L8 21l2.76-1.24L12 17zm7-11l-1.24-2.76L15 3l2.76 1.24L20 7z"/>
+    <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 26 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
+        <path d="M12 2L9.09 8.26 2 9.27l5 4.87-1.18 6.88L12 17.77l6.18 3.25L17 14.14l5-4.87-7.09-1.01L12 2zM2 12l5 4.87-1.18 6.88L12 17.77l6.18 3.25L17 14.14l5-4.87"/>
     </svg>
   </span>
 );

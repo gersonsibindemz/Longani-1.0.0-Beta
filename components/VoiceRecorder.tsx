@@ -58,6 +58,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSave }) => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          sampleRate: 48000, // Request high-quality sample rate for better audio fidelity.
           // Requesting raw audio without processing can improve transcription accuracy
           // if the recording environment is relatively clean.
           echoCancellation: false,
@@ -71,13 +72,11 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSave }) => {
         audioBitsPerSecond: qualityProfiles[quality].audioBitsPerSecond,
       };
 
-      // Prefer Opus codec in a WebM container for best quality and compatibility
-      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+      // Prefer a standard mp4 (AAC codec) container if available. WebM (Opus codec) is a great fallback.
+      if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        options.mimeType = 'audio/mp4';
+      } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
         options.mimeType = 'audio/webm;codecs=opus';
-      } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
-        options.mimeType = 'audio/ogg;codecs=opus';
-      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-        options.mimeType = 'audio/webm';
       }
       // If no preferred format is supported, the browser will use its default with the specified bitrate.
 

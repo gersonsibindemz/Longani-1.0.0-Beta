@@ -22,7 +22,9 @@ const urlsToCache = [
   '/utils/db.ts',
   '/components/DropdownMenu.tsx',
   '/components/PropertiesModal.tsx',
-  '/components/TranslationsPage.tsx', // New component
+  '/components/TranslationsPage.tsx',
+  '/components/RefineModal.tsx',
+  '/components/SignUpPage.tsx', // New component
 ];
 
 // Install event: open a cache and add the core app shell files to it.
