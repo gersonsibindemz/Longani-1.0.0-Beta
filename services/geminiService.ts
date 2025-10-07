@@ -154,10 +154,10 @@ export function transcribeAudio(audioBase64: string, audioMimeType: string): Asy
         },
     };
 
-    // FIX: Replaced deprecated `GenerateContentRequest` with `GenerateContentParameters`.
+    // FIX: The `contents` property should be a single `Content` object for a single-turn request, not an array containing one.
     const request: GenerateContentParameters = {
         model: 'gemini-2.5-flash',
-        contents: [{ parts: [audioPart, { text: transcribePrompt }] }],
+        contents: { parts: [audioPart, { text: transcribePrompt }] },
         config: {
             temperature: 0.1, // Lower temperature for more deterministic, literal transcription
             thinkingConfig: { thinkingBudget: 0 } // Disable thinking for faster, direct transcription
@@ -174,10 +174,10 @@ export function cleanTranscript(rawTranscript: string): AsyncGenerator<string> {
     }
 
     const prompt = cleanPromptTemplate(rawTranscript);
-    // FIX: Replaced deprecated `GenerateContentRequest` with `GenerateContentParameters`.
+    // FIX: The `contents` property should be a single `Content` object for a single-turn request, not an array containing one.
     const request: GenerateContentParameters = {
         model: 'gemini-2.5-flash',
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: { parts: [{ text: prompt }] },
         config: {
             temperature: 0.5, // Allow for some creativity in formatting
         }
@@ -194,9 +194,10 @@ export function translateText(textToTranslate: string, targetLanguage: 'en' | 's
     const targetLanguageName = targetLanguage === 'en' ? 'English' : 'Shona';
     const prompt = translatePromptTemplate(textToTranslate, targetLanguageName);
 
+    // FIX: The `contents` property should be a single `Content` object for a single-turn request, not an array containing one.
     const request: GenerateContentParameters = {
         model: 'gemini-2.5-flash',
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: { parts: [{ text: prompt }] },
         config: {
             temperature: 0.5, // Increased temperature to allow for more natural, less literal phrasing.
         }
@@ -212,9 +213,10 @@ export function refineTranscript(rawTranscript: string, contentType: RefineConte
 
   const prompt = getRefinePrompt(rawTranscript, contentType, outputFormat, targetLanguage);
   
+  // FIX: The `contents` property should be a single `Content` object for a single-turn request, not an array containing one.
   const request: GenerateContentParameters = {
       model: 'gemini-2.5-flash',
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: { parts: [{ text: prompt }] },
       config: {
           temperature: 0.6, // Allow more creativity for structuring
       }

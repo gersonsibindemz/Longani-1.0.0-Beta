@@ -364,8 +364,16 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
               </div>
 
               {/* Sidebar Footer */}
-              <footer className="border-t border-gray-200/60 dark:border-gray-700/60 pt-4 text-center text-gray-500 dark:text-gray-400 text-xs select-none">
-                  <p>
+              <footer className="border-t border-gray-200/60 dark:border-gray-700/60 pt-4">
+                  <a
+                    href="mailto:gersonsibinde64@gmail.com?subject=Longani%20App%20Issue%20Report"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block text-center text-sm font-medium text-gray-700 dark:text-gray-300 hover:underline mb-4"
+                  >
+                    Reportar um Problema
+                  </a>
+                  <p className="text-center text-gray-500 dark:text-gray-400 text-xs select-none">
                   © {new Date().getFullYear()} Longani &middot; v0.9.2
                   </p>
               </footer>
