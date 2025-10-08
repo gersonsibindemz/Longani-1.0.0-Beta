@@ -202,6 +202,17 @@ export const UserIcon: React.FC<{className?: string}> = ({className}) => (
   </span>
 );
 
+export const UsersIcon: React.FC<{className?: string}> = ({className}) => (
+    <span className={`inline-block ${className || ''}`}>
+      <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 26 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
+          <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+          <circle cx="9" cy="7" r="4" />
+          <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+      </svg>
+    </span>
+);
+
 export const TrashIcon: React.FC<{className?: string}> = ({className}) => (
   <span className={`inline-block ${className || ''}`}>
     <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 26 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">

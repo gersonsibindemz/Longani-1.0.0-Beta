@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { MenuIcon, CloseIcon, UserIcon, SunIcon, MoonIcon } from './Icons';
+import { MenuIcon, CloseIcon, UserIcon, SunIcon, MoonIcon, UsersIcon } from './Icons';
 import { Theme, PreferredLanguage } from '../App';
 import type { User } from './ProfilePage';
 
@@ -132,6 +132,17 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                   }`}
                 >
                   Favoritos
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#/teams"
+                  onClick={handleNavClick}
+                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                    page === 'teams' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  Equipa
                 </a>
               </li>
               <li>
@@ -278,6 +289,17 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                               }`}
                           >
                               Favoritos
+                          </a>
+                        </li>
+                         <li>
+                          <a
+                              href="#/teams"
+                              onClick={handleNavClick}
+                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                page === 'teams' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                              }`}
+                          >
+                              Equipa
                           </a>
                         </li>
                          <li>

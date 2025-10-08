@@ -1,9 +1,25 @@
 const DB_NAME = 'LonganiDB';
-const DB_VERSION = 5; // Incremented DB version for folders and tags
+const DB_VERSION = 7; // Incremented DB version for teams feature
 const STORE_NAME_TRANSCRIPTIONS = 'transcriptions';
 const STORE_NAME_AUDIO = 'audioFiles';
 const STORE_NAME_SAVED_TRANSLATIONS = 'savedTranslations';
 const STORE_NAME_FOLDERS = 'folders'; // New store for folders
+const STORE_NAME_TEAMS = 'teams'; // New store for teams
+
+export interface User {
+  id: string; // email
+  name: string;
+  photo?: string | null;
+  teamId?: string;
+  status: 'pending' | 'active';
+}
+
+export interface Team {
+    id: string;
+    name: string;
+    ownerId: string;
+    members: User[];
+}
 
 export interface Transcription {
   id: string;
@@ -18,6 +34,8 @@ export interface Transcription {
   refinedTranscript?: string;
   refinedContentType?: string;
   refinedOutputFormat?: string;
+  teamId?: string;
+  sharedBy?: string;
 }
 
 export interface AudioRecording {
@@ -124,6 +142,29 @@ export function initDB(): Promise<IDBDatabase> {
         const audioStore = (event.target as IDBOpenDBRequest).transaction.objectStore(STORE_NAME_AUDIO);
         if (!audioStore.indexNames.contains('tags')) {
             audioStore.createIndex('tags', 'tags', { unique: false, multiEntry: true });
+        }
+      }
+      
+      if (event.oldVersion < 6) {
+        const transcriptionsStore = (event.target as IDBOpenDBRequest).transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
+        if (!transcriptionsStore.indexNames.contains('isShared')) {
+            transcriptionsStore.createIndex('isShared', 'isShared', { unique: false });
+        }
+      }
+
+      if (event.oldVersion < 7) {
+        if (!dbInstance.objectStoreNames.contains(STORE_NAME_TEAMS)) {
+            dbInstance.createObjectStore(STORE_NAME_TEAMS, { keyPath: 'id' });
+        }
+        const transaction = (event.target as IDBOpenDBRequest).transaction;
+        if (transaction) {
+            const transcriptionsStore = transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
+            if (transcriptionsStore.indexNames.contains('isShared')) {
+                transcriptionsStore.deleteIndex('isShared');
+            }
+            if (!transcriptionsStore.indexNames.contains('teamId')) {
+                transcriptionsStore.createIndex('teamId', 'teamId', { unique: false });
+            }
         }
       }
     };
@@ -295,6 +336,76 @@ export function deleteAudioFile(id: string): Promise<void> {
     }
   });
 }
+
+// --- Team Functions ---
+export function addTeam(team: Team): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const db = await initDB();
+            const transaction = db.transaction(STORE_NAME_TEAMS, 'readwrite');
+            const store = transaction.objectStore(STORE_NAME_TEAMS);
+            const request = store.add(team);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject('Could not add team.');
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+export function getTeam(id: string): Promise<Team | undefined> {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const db = await initDB();
+            const transaction = db.transaction(STORE_NAME_TEAMS, 'readonly');
+            const store = transaction.objectStore(STORE_NAME_TEAMS);
+            const request = store.get(id);
+            request.onsuccess = () => resolve(request.result);
+            request.onerror = () => reject('Could not get team.');
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+export function updateTeam(id: string, updates: Partial<Team>): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const db = await initDB();
+            const transaction = db.transaction(STORE_NAME_TEAMS, 'readwrite');
+            const store = transaction.objectStore(STORE_NAME_TEAMS);
+            const request = store.get(id);
+            request.onsuccess = () => {
+                const item = request.result;
+                if (item) {
+                    const updatedItem = { ...item, ...updates };
+                    store.put(updatedItem).onsuccess = () => resolve();
+                } else {
+                    reject('Team not found.');
+                }
+            };
+            request.onerror = () => reject('Could not get team to update.');
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
+export function deleteTeam(id: string): Promise<void> {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const db = await initDB();
+            const transaction = db.transaction(STORE_NAME_TEAMS, 'readwrite');
+            const store = transaction.objectStore(STORE_NAME_TEAMS);
+            const request = store.delete(id);
+            request.onsuccess = () => resolve();
+            request.onerror = () => reject('Could not delete team.');
+        } catch (error) {
+            reject(error);
+        }
+    });
+}
+
 
 // --- Folder Functions ---
 

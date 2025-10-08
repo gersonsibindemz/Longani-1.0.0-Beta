@@ -7,8 +7,8 @@ if (!process.env.API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export type RefineContentType = 'meeting' | 'sermon' | 'interview' | 'lecture' | 'note';
-export type RefineOutputFormat = 'report' | 'article' | 'key-points' | 'action-items';
+export type RefineContentType = 'meeting' | 'sermon' | 'interview' | 'lecture' | 'note' | 'team-meeting';
+export type RefineOutputFormat = 'report' | 'article' | 'key-points' | 'action-items' | 'meeting-report';
 export type PreferredLanguage = 'pt' | 'en' | 'sn';
 
 /**
@@ -58,11 +58,12 @@ ${rawTranscript}
 ---
 
 **Instructions:**
-1.  **Analyze and Structure:** Identify the main topics, arguments, and logical flow of the conversation. Create a clear structure using appropriate HTML headings (\`<h2>\`, \`<h3>\`, \`<h4>\`). DO NOT use \`<h1>\`. The structure should make the content easy to navigate and understand.
-2.  **Format Lists:** Where appropriate, format items into bulleted lists using \`<ul>\` or numbered lists using \`<ol>\`.
-3.  **Refine Content:** Meticulously correct grammar, spelling, and punctuation. Remove filler words (e.g., "uhm," "ah," "tipo"), false starts, and unnecessary repetitions. Rewrite sentences for better clarity and flow, but **you must strictly preserve the original meaning, intent, and voice of the speaker(s)**. Use standard paragraph tags (\`<p>\`).
-4.  **Add Emphasis:** Use \`<strong>\` tags to highlight key terms, conclusions, or important statements. Use \`<em>\` for more subtle emphasis where natural.
-5.  **Output Requirements:** Provide ONLY the HTML body content. Do not include \`<html>\`, \`<body>\`, or markdown fences like \`\`\`html\`\`\`. The output must be ready to be injected directly into a webpage.
+1.  **Crucial Language Rule:** The input transcript is in Portuguese. Your entire output **MUST** also be in Portuguese. Do not translate any part of the text to another language.
+2.  **Analyze and Structure:** Identify the main topics, arguments, and logical flow of the conversation. Create a clear structure using appropriate HTML headings (\`<h2>\`, \`<h3>\`, \`<h4>\`). DO NOT use \`<h1>\`. The structure should make the content easy to navigate and understand.
+3.  **Format Lists:** Where appropriate, format items into bulleted lists using \`<ul>\` or numbered lists using \`<ol>\`.
+4.  **Refine Content:** Meticulously correct grammar, spelling, and punctuation. Remove filler words (e.g., "uhm," "ah," "tipo"), false starts, and unnecessary repetitions. Rewrite sentences for better clarity and flow, but **you must strictly preserve the original meaning, intent, and voice of the speaker(s)**. Use standard paragraph tags (\`<p>\`).
+5.  **Add Emphasis:** Use \`<strong>\` tags to highlight key terms, conclusions, or important statements. Use \`<em>\` for more subtle emphasis where natural.
+6.  **Output Requirements:** Provide ONLY the HTML body content. Do not include \`<html>\`, \`<body>\`, or markdown fences like \`\`\`html\`\`\`. The output must be ready to be injected directly into a webpage.
 `;
 
 const translatePromptTemplate = (textToTranslate: string, targetLanguageName: string) => `
@@ -113,6 +114,9 @@ const getRefinePrompt = (rawTranscript: string, contentType: RefineContentType, 
     case 'meeting':
       prompt += `The transcript is from a business meeting or discussion. Analyze the conversation to identify key topics, decisions, and outcomes. If possible, distinguish between different speakers (e.g., Speaker 1, Speaker 2, or by name if mentioned). `;
       break;
+    case 'team-meeting':
+      prompt += `The transcript is from a team meeting. Analyze the conversation to identify the main summary, key discussion points, and all concrete action items. `;
+      break;
     case 'sermon':
       prompt += `The transcript is from a sermon, speech, or monologue. Identify the main message, supporting points, and any concluding remarks. The tone should be engaging and reflective of a spoken address. `;
       break;
@@ -131,6 +135,13 @@ const getRefinePrompt = (rawTranscript: string, contentType: RefineContentType, 
   switch (outputFormat) {
     case 'report':
       prompt += `Format the output as a detailed report. Include a title, a brief summary, sections for each major topic discussed, and a concluding list of key decisions and action items.`;
+      break;
+    case 'meeting-report':
+      prompt += `Format the output as a professional meeting report, structured as valid HTML. It MUST contain the following sections, in this order:
+      1.  A main heading (\`<h2>\`) with the title "Relatório da Reunião".
+      2.  A section under an \`<h3>\` titled "Sumário" with a concise summary of the meeting's purpose and key outcomes.
+      3.  A section under an \`<h3>\` titled "Pontos de Discussão" with a bulleted list (\`<ul>\`) of the main topics discussed.
+      4.  A section under an \`<h3>\` titled "Ações a Tomar" with a numbered list (\`<ol>\`) of all specific action items or tasks assigned. Each action item should be clear and actionable. If no action items are found, state "Nenhuma ação específica foi definida." in this section.`;
       break;
     case 'article':
       prompt += `Format the output as an engaging article or blog post. Create a compelling title and use subheadings to structure the content into logical sections. The language should be polished and readable.`;

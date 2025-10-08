@@ -3,7 +3,7 @@ import { Loader } from './Loader';
 import { longaniLogoUrl } from './Header';
 
 interface LoginPageProps {
-  onLoginSuccess: (username: string) => void;
+  onLoginSuccess: (username: string, email: string) => void;
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
@@ -20,7 +20,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess }) => {
     // Mock authentication for testing purposes
     setTimeout(() => {
       if (email.toLowerCase() === 'gersonsibinde64@gmail.com' && password === '123456') {
-        onLoginSuccess('Gerson Sibinde');
+        onLoginSuccess('Gerson Sibinde', email.toLowerCase());
       } else {
         setError('Email ou palavra-passe inválidos.');
         setIsLoading(false);

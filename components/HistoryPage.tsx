@@ -4,12 +4,13 @@ import {
     getAllFolders, addFolder, updateFolder, deleteFolder, Folder, updateAudioFile
 } from '../utils/db';
 import { Loader } from './Loader';
-import { ClipboardIcon, CheckIcon, TrashIcon, ChevronDownIcon, SearchIcon, StarIcon, StarOutlineIcon, MoreVerticalIcon, EditIcon, InfoIcon, CloseIcon, SparkleIcon } from './Icons';
+import { ClipboardIcon, CheckIcon, TrashIcon, ChevronDownIcon, SearchIcon, StarIcon, StarOutlineIcon, MoreVerticalIcon, EditIcon, InfoIcon, CloseIcon, SparkleIcon, UsersIcon } from './Icons';
 import { ConfirmationModal } from './ConfirmationModal';
 import { DropdownMenu } from './DropdownMenu';
 import { PropertiesModal } from './PropertiesModal';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import type { RefineContentType, RefineOutputFormat } from '../services/geminiService';
+import type { User } from './ProfilePage';
 
 const FOLDER_ID_UNFILED = 'unfiled';
 
@@ -93,8 +94,10 @@ const TranscriptionItem: React.FC<{
   onShowProperties: () => void;
   onUpdateTags: (tags: string[]) => void;
   onMoveToFolder: (folderId: string | null) => void;
+  onShareChange: () => void;
   isHighlighted: boolean;
-}> = ({ transcript, folders, onToggle, isExpanded, onDelete, onSetFavorite, onRename, onShowProperties, onUpdateTags, onMoveToFolder, isHighlighted }) => {
+  currentUser: User | null;
+}> = ({ transcript, folders, onToggle, isExpanded, onDelete, onSetFavorite, onRename, onShowProperties, onUpdateTags, onMoveToFolder, onShareChange, isHighlighted, currentUser }) => {
     const [copiedRaw, setCopiedRaw] = useState(false);
     const [copiedCleaned, setCopiedCleaned] = useState(false);
     const [copiedRefined, setCopiedRefined] = useState(false);
@@ -193,6 +196,9 @@ const TranscriptionItem: React.FC<{
         window.location.hash = '#/home';
     };
 
+    const isShared = !!transcript.teamId;
+    const canShare = !!currentUser?.teamId;
+
     const dropdownOptions = [
         { label: 'Refinar/Editar na Página Principal', icon: <SparkleIcon className="w-4 h-4" />, onClick: handleRefineAndEdit },
         { label: 'Renomear', icon: <EditIcon className="w-4 h-4" />, onClick: () => setIsRenaming(true) },
@@ -203,6 +209,7 @@ const TranscriptionItem: React.FC<{
             ...folders.map(f => ({ label: f.name, onClick: () => onMoveToFolder(f.id) }))
           ]
         },
+        { label: isShared ? 'Deixar de Partilhar' : 'Partilhar com a Equipa', icon: <UsersIcon className="w-4 h-4" />, onClick: onShareChange, disabled: !canShare && !isShared },
         { label: transcript.isFavorite ? 'Remover Favorito' : 'Adicionar Favorito', icon: transcript.isFavorite ? <StarIcon className="w-4 h-4 text-yellow-500" /> : <StarOutlineIcon className="w-4 h-4" />, onClick: () => onSetFavorite(!transcript.isFavorite) },
         { label: 'Apagar', icon: <TrashIcon className="w-4 h-4" />, onClick: onDelete, className: 'text-red-600 dark:text-red-400' },
     ];
@@ -232,9 +239,12 @@ const TranscriptionItem: React.FC<{
                     onClick={(e) => e.stopPropagation()}
                 />
             ) : (
-                <p className="font-semibold text-gray-800 dark:text-gray-200 truncate pr-2" title={transcript.filename}>
-                    {transcript.filename}
-                </p>
+                <div className="flex items-center gap-2">
+                    {transcript.teamId && <UsersIcon className="w-4 h-4 text-cyan-600 dark:text-cyan-400 flex-shrink-0" title="Partilhado com a equipa"/>}
+                    <p className="font-semibold text-gray-800 dark:text-gray-200 truncate pr-2" title={transcript.filename}>
+                        {transcript.filename}
+                    </p>
+                </div>
             )}
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {new Date(transcript.date).toLocaleString('pt-PT', { dateStyle: 'long', timeStyle: 'short' })}
@@ -300,7 +310,11 @@ const TranscriptionItem: React.FC<{
   );
 };
 
-export const HistoryPage: React.FC = () => {
+interface HistoryPageProps {
+    currentUser: User | null;
+}
+
+export const HistoryPage: React.FC<HistoryPageProps> = ({ currentUser }) => {
   const [transcripts, setTranscripts] = useState<Transcription[]>([]);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -501,6 +515,7 @@ export const HistoryPage: React.FC = () => {
                             key={t.id}
                             transcript={t}
                             folders={folders}
+                            currentUser={currentUser}
                             isExpanded={expandedId === t.id}
                             onToggle={() => setExpandedId(currentId => (currentId === t.id ? null : t.id))}
                             onDelete={() => setDeleteModal({type: 'transcription', id: t.id})}
@@ -509,6 +524,7 @@ export const HistoryPage: React.FC = () => {
                             onShowProperties={() => setPropertiesItem(t)}
                             onUpdateTags={(tags) => handleUpdateTranscription(t.id, { tags })}
                             onMoveToFolder={(folderId) => handleUpdateTranscription(t.id, { folderId: folderId === null ? undefined : folderId })}
+                            onShareChange={() => handleUpdateTranscription(t.id, { teamId: t.teamId ? undefined : currentUser?.teamId, sharedBy: t.teamId ? undefined : currentUser?.name })}
                             isHighlighted={highlightedId === t.id}
                         />
                     ))}

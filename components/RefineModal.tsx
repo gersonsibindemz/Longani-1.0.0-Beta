@@ -11,6 +11,7 @@ interface RefineModalProps {
 }
 
 const contentTypes: { id: RefineContentType; label: string }[] = [
+  { id: 'team-meeting', label: 'Reunião da Equipa' },
   { id: 'meeting', label: 'Reunião / Discussão' },
   { id: 'sermon', label: 'Sermão / Discurso' },
   { id: 'interview', label: 'Entrevista' },
@@ -19,6 +20,7 @@ const contentTypes: { id: RefineContentType; label: string }[] = [
 ];
 
 const outputFormats: { id: RefineOutputFormat; label: string; description: string }[] = [
+  { id: 'meeting-report', label: 'Relatório de Reunião', description: 'Gera um sumário, pontos-chave e uma lista de ações a tomar.' },
   { id: 'report', label: 'Relatório Detalhado', description: 'Ideal para reuniões. Inclui participantes, sumário e ações a tomar.' },
   { id: 'article', label: 'Artigo Envolvente', description: 'Formata o texto como um artigo de blog ou notícia, com títulos e ênfase.' },
   { id: 'key-points', label: 'Resumo de Pontos-Chave', description: 'Extrai as ideias principais numa lista concisa de marcadores.' },
@@ -26,8 +28,8 @@ const outputFormats: { id: RefineOutputFormat; label: string; description: strin
 ];
 
 export const RefineModal: React.FC<RefineModalProps> = ({ isOpen, onClose, onSubmit, isRefining }) => {
-  const [contentType, setContentType] = useState<RefineContentType>('meeting');
-  const [outputFormat, setOutputFormat] = useState<RefineOutputFormat>('report');
+  const [contentType, setContentType] = useState<RefineContentType>('team-meeting');
+  const [outputFormat, setOutputFormat] = useState<RefineOutputFormat>('meeting-report');
 
   if (!isOpen) return null;
 

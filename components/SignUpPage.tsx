@@ -3,7 +3,7 @@ import { Loader } from './Loader';
 import { longaniLogoUrl } from './Header';
 
 interface SignUpPageProps {
-  onSignUpSuccess: (username: string) => void;
+  onSignUpSuccess: (username: string, email: string) => void;
 }
 
 export const SignUpPage: React.FC<SignUpPageProps> = ({ onSignUpSuccess }) => {
@@ -38,7 +38,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onSignUpSuccess }) => {
     // Mock sign-up for testing purposes
     setTimeout(() => {
       // Simulate a successful sign-up and log the user in
-      onSignUpSuccess(username);
+      onSignUpSuccess(username, email.toLowerCase());
     }, 1000);
   };
   

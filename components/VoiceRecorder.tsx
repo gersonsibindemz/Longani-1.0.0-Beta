@@ -66,6 +66,19 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSave }) => {
           autoGainControl: false,
         },
       });
+      
+      // Handle interruptions like incoming calls which can terminate the stream.
+      stream.getTracks().forEach(track => {
+        track.onended = () => {
+          // Check if the recorder is still in the 'recording' state.
+          // This prevents this from firing on a manual stop.
+          if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            stopRecording();
+            setError("A gravação foi interrompida. Isto pode acontecer devido a uma chamada telefónica ou outra aplicação a usar o microfone.");
+          }
+        };
+      });
+
       setStatus('recording');
       
       const options: MediaRecorderOptions = {

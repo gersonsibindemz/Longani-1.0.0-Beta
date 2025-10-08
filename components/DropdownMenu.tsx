@@ -16,6 +16,7 @@ interface DropdownOption {
   onClick?: () => void;
   className?: string;
   submenu?: SubmenuOption[];
+  disabled?: boolean;
 }
 
 interface DropdownMenuProps {
@@ -43,9 +44,9 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({ trigger, options }) 
   }, []);
 
   // Safely handles clicks on options, ensuring an onClick function exists.
-  const handleOptionClick = (onClick?: () => void) => {
-    if (onClick) {
-        onClick();
+  const handleOptionClick = (option: DropdownOption) => {
+    if (option.onClick && !option.disabled) {
+        option.onClick();
         setIsOpen(false);
         setActiveSubmenu(null);
     }
@@ -53,7 +54,7 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({ trigger, options }) 
   
   // Handlers for showing/hiding submenus with a slight delay for better UX.
   const handleSubmenuEnter = (option: DropdownOption, target: HTMLElement) => {
-    if (!option.submenu) return;
+    if (!option.submenu || option.disabled) return;
     if (submenuTimeoutRef.current) clearTimeout(submenuTimeoutRef.current);
 
     const mainDropdown = dropdownRef.current?.querySelector('[role="menu"]')?.parentElement;
@@ -125,10 +126,11 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({ trigger, options }) 
                     e.stopPropagation();
                     // Only trigger click for items that are not submenu parents.
                     if (!option.submenu) {
-                        handleOptionClick(option.onClick);
+                        handleOptionClick(option);
                     }
                   }}
-                  className={`w-full flex items-center justify-between gap-3 px-4 py-2 text-sm text-left ${option.className || 'text-gray-700 dark:text-gray-200'} hover:bg-gray-100 dark:hover:bg-gray-700`}
+                  disabled={option.disabled}
+                  className={`w-full flex items-center justify-between gap-3 px-4 py-2 text-sm text-left ${option.className || 'text-gray-700 dark:text-gray-200'} hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed`}
                   role="menuitem"
                 >
                   <span className="flex items-center gap-3">
@@ -156,7 +158,7 @@ export const DropdownMenu: React.FC<DropdownMenuProps> = ({ trigger, options }) 
                             key={subOption.label}
                             onClick={(e) => {
                                 e.stopPropagation();
-                                handleOptionClick(subOption.onClick);
+                                handleOptionClick({ label: subOption.label, icon: <></>, onClick: subOption.onClick });
                             }}
                             className={`w-full text-left flex items-center gap-3 px-4 py-2 text-sm ${subOption.className || 'text-gray-700 dark:text-gray-200'} hover:bg-gray-100 dark:hover:bg-gray-700`}
                             role="menuitem"

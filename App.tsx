@@ -22,6 +22,7 @@ import type { RefineContentType, RefineOutputFormat } from './services/geminiSer
 import { SignUpPage } from './components/SignUpPage';
 import { ProfilePage } from './components/ProfilePage';
 import type { User } from './components/ProfilePage';
+import { TeamsPage } from './components/TeamsPage';
 
 
 type ProcessStage = 'idle' | 'transcribing' | 'cleaning' | 'completed';
@@ -38,6 +39,7 @@ const languageMap: { [key in PreferredLanguage]: string } = {
 };
 
 const contentLabels: { [key in RefineContentType]: string } = {
+    'team-meeting': 'Reunião da Equipa',
     'meeting': 'Reunião',
     'sermon': 'Sermão',
     'interview': 'Entrevista',
@@ -46,6 +48,7 @@ const contentLabels: { [key in RefineContentType]: string } = {
 };
 
 const formatLabels: { [key in RefineOutputFormat]: string } = {
+    'meeting-report': 'Relatório de Reunião',
     'report': 'Relatório Detalhado',
     'article': 'Artigo Envolvente',
     'key-points': 'Resumo de Pontos-Chave',
@@ -187,7 +190,11 @@ const App: React.FC = () => {
     const savedUserJSON = localStorage.getItem('longaniUser');
     if (savedUserJSON) {
         try {
-            setCurrentUser(JSON.parse(savedUserJSON));
+            const user = JSON.parse(savedUserJSON);
+            if (!user.status) { // Handle old user objects from before the status field was added
+                user.status = 'active';
+            }
+            setCurrentUser(user);
         } catch (e) {
             console.error("Failed to parse user from localStorage", e);
             localStorage.removeItem('longaniUser');
@@ -618,8 +625,8 @@ const App: React.FC = () => {
     window.location.hash = '#/history';
   };
 
-  const handleLoginSuccess = (username: string) => {
-    const newUser: User = { name: username, photo: null };
+  const handleLoginSuccess = (username: string, email: string) => {
+    const newUser: User = { id: email, name: username, photo: null, status: 'active' };
     setCurrentUser(newUser);
     localStorage.setItem('longaniUser', JSON.stringify(newUser));
     window.location.hash = '#/home';
@@ -631,9 +638,16 @@ const App: React.FC = () => {
     window.location.hash = '#/login';
   };
   
-  const handleProfileUpdate = (updatedUser: User) => {
+  const handleUserUpdate = (updatedUser: User) => {
     setCurrentUser(updatedUser);
     localStorage.setItem('longaniUser', JSON.stringify(updatedUser));
+  };
+
+  const handleProfileUpdate = (updatedUser: User) => {
+    // Preserve ID and teamId during profile updates
+    const finalUser = { ...currentUser, ...updatedUser };
+    setCurrentUser(finalUser);
+    localStorage.setItem('longaniUser', JSON.stringify(finalUser));
   };
 
   const handleDismissDesktopMessage = () => {
@@ -654,11 +668,13 @@ const App: React.FC = () => {
       case 'profile':
         return <ProfilePage user={currentUser} onUpdateProfile={handleProfileUpdate} onLogout={handleLogout} />;
       case 'history':
-        return <HistoryPage />;
+        return <HistoryPage currentUser={currentUser} />;
       case 'recordings':
         return <RecordingsPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} />;
       case 'favorites':
         return <FavoritesPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} />;
+      case 'teams':
+        return <TeamsPage currentUser={currentUser} onUserUpdate={handleUserUpdate} />;
       case 'translations':
         return <TranslationsPage />;
       case 'home':
