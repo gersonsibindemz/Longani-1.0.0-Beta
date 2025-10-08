@@ -103,17 +103,6 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
               </li>
               <li>
                 <a
-                  href="#/history"
-                  onClick={handleNavClick}
-                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                    page === 'history' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                  }`}
-                >
-                  Minhas Transcrições
-                </a>
-              </li>
-               <li>
-                <a
                   href="#/recordings"
                   onClick={handleNavClick}
                   className={`font-medium hover:text-[#24a9c5] transition-colors ${
@@ -121,6 +110,17 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                   }`}
                 >
                   Gravações
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#/history"
+                  onClick={handleNavClick}
+                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                    page === 'history' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  Minhas Transcrições
                 </a>
               </li>
               <li>
@@ -136,17 +136,6 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
               </li>
               <li>
                 <a
-                  href="#/teams"
-                  onClick={handleNavClick}
-                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                    page === 'teams' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                  }`}
-                >
-                  Equipa
-                </a>
-              </li>
-              <li>
-                <a
                   href="#/translations"
                   onClick={handleNavClick}
                   className={`font-medium hover:text-[#24a9c5] transition-colors ${
@@ -154,6 +143,17 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                   }`}
                 >
                   Traduções
+                </a>
+              </li>
+              <li>
+                <a
+                  href="#/teams"
+                  onClick={handleNavClick}
+                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                    page === 'teams' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                  }`}
+                >
+                  Equipa
                 </a>
               </li>
               {currentUser ? (
@@ -260,17 +260,6 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                         </li>
                         <li>
                           <a
-                              href="#/history"
-                              onClick={handleNavClick}
-                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                                page === 'history' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
-                              }`}
-                          >
-                              Minhas Transcrições
-                          </a>
-                        </li>
-                        <li>
-                          <a
                               href="#/recordings"
                               onClick={handleNavClick}
                               className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
@@ -278,6 +267,17 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                               }`}
                           >
                               Gravações
+                          </a>
+                        </li>
+                        <li>
+                          <a
+                              href="#/history"
+                              onClick={handleNavClick}
+                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                page === 'history' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                              }`}
+                          >
+                              Minhas Transcrições
                           </a>
                         </li>
                         <li>
@@ -293,17 +293,6 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                         </li>
                          <li>
                           <a
-                              href="#/teams"
-                              onClick={handleNavClick}
-                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                                page === 'teams' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
-                              }`}
-                          >
-                              Equipa
-                          </a>
-                        </li>
-                         <li>
-                          <a
                               href="#/translations"
                               onClick={handleNavClick}
                               className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
@@ -311,6 +300,17 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                               }`}
                           >
                               Traduções
+                          </a>
+                        </li>
+                         <li>
+                          <a
+                              href="#/teams"
+                              onClick={handleNavClick}
+                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                page === 'teams' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                              }`}
+                          >
+                              Equipa
                           </a>
                         </li>
                          <li>
@@ -373,7 +373,6 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                         <div role="radiogroup" className="flex items-center gap-4">
                             <button role="radio" aria-checked={localLanguage === 'pt'} onClick={() => setLocalLanguage('pt')} className={`text-sm font-medium transition-colors ${localLanguage === 'pt' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Português</button>
                             <button role="radio" aria-checked={localLanguage === 'en'} onClick={() => setLocalLanguage('en')} className={`text-sm font-medium transition-colors ${localLanguage === 'en' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Inglês</button>
-                            <button role="radio" aria-checked={localLanguage === 'sn'} onClick={() => setLocalLanguage('sn')} className={`text-sm font-medium transition-colors ${localLanguage === 'sn' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Shona</button>
                         </div>
                     </div>
                      {/* Save Button */}
@@ -396,7 +395,7 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                     Reportar um Problema
                   </a>
                   <p className="text-center text-gray-500 dark:text-gray-400 text-xs select-none">
-                  © {new Date().getFullYear()} Longani &middot; v0.9.2
+                  © {new Date().getFullYear()} Longani &middot; v.1.0.0 Beta
                   </p>
               </footer>
             </div>

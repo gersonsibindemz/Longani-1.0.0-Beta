@@ -27,7 +27,7 @@ import { TeamsPage } from './components/TeamsPage';
 
 type ProcessStage = 'idle' | 'transcribing' | 'cleaning' | 'completed';
 export type Theme = 'light' | 'dark';
-export type PreferredLanguage = 'pt' | 'en' | 'sn';
+export type PreferredLanguage = 'pt' | 'en';
 
 type ExpandedTranscript = 'raw' | 'cleaned' | 'none';
 type OutputPreference = 'both' | 'raw' | 'cleaned';
@@ -35,7 +35,6 @@ type OutputPreference = 'both' | 'raw' | 'cleaned';
 const languageMap: { [key in PreferredLanguage]: string } = {
   pt: 'Português',
   en: 'Inglês',
-  sn: 'Shona'
 };
 
 const contentLabels: { [key in RefineContentType]: string } = {
@@ -209,7 +208,7 @@ const App: React.FC = () => {
         setTheme(storedTheme);
       }
       const storedLanguage = localStorage.getItem('preferredLanguage') as PreferredLanguage | null;
-      if (storedLanguage && ['pt', 'en', 'sn'].includes(storedLanguage)) {
+      if (storedLanguage && ['pt', 'en'].includes(storedLanguage)) {
         setPreferredLanguage(storedLanguage);
       }
       // For PWA, show the app immediately without a video splash screen.
@@ -535,7 +534,7 @@ const App: React.FC = () => {
         finalHtml = cleanedHtml;
 
         if (preferredLanguage !== 'pt' && cleanedHtml.trim()) {
-          if (preferredLanguage === 'en' || preferredLanguage === 'sn') {
+          if (preferredLanguage === 'en') {
             let translatedHtml = '';
             for await (const chunk of translateText(cleanedHtml, preferredLanguage)) {
                 translatedHtml += chunk;
@@ -969,7 +968,7 @@ const App: React.FC = () => {
         {page !== 'login' && page !== 'signup' && (
             <footer className="hidden sm:block text-center py-6 text-gray-500 dark:text-gray-400 text-sm select-none">
                 <p>
-                    © {new Date().getFullYear()} Longani &middot; v0.9.2
+                    © {new Date().getFullYear()} Longani &middot; v.1.0.0 Beta
                 </p>
             </footer>
         )}

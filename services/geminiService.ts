@@ -9,7 +9,7 @@ const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export type RefineContentType = 'meeting' | 'sermon' | 'interview' | 'lecture' | 'note' | 'team-meeting';
 export type RefineOutputFormat = 'report' | 'article' | 'key-points' | 'action-items' | 'meeting-report';
-export type PreferredLanguage = 'pt' | 'en' | 'sn';
+export type PreferredLanguage = 'pt' | 'en';
 
 /**
  * A generic function to handle streaming content generation from the Gemini API.
@@ -102,7 +102,7 @@ ${textToTranslate}
 `;
 
 const getRefinePrompt = (rawTranscript: string, contentType: RefineContentType, outputFormat: RefineOutputFormat, targetLanguage: PreferredLanguage): string => {
-  const languageMap = { pt: 'Português', en: 'English', sn: 'Shona' };
+  const languageMap = { pt: 'Português', en: 'English' };
   const languageName = languageMap[targetLanguage];
 
   let prompt = `You are a world-class AI assistant specialized in text transformation. Your task is to process a raw audio transcript and reformat it into a specific document type. The output must be clean, professional, and structured as valid HTML body content. **The final output must be written in ${languageName}.** Do not include \`<html>\`, \`<body>\`, or markdown fences. Use headings (h2, h3), paragraphs, lists, and emphasis (strong, em) where appropriate.\n\n`;
@@ -197,12 +197,12 @@ export function cleanTranscript(rawTranscript: string): AsyncGenerator<string> {
     return generateStream(request);
 };
 
-export function translateText(textToTranslate: string, targetLanguage: 'en' | 'sn'): AsyncGenerator<string> {
+export function translateText(textToTranslate: string, targetLanguage: 'en'): AsyncGenerator<string> {
     if (!textToTranslate.trim()) {
         return (async function*() {})();
     }
 
-    const targetLanguageName = targetLanguage === 'en' ? 'English' : 'Shona';
+    const targetLanguageName = 'English';
     const prompt = translatePromptTemplate(textToTranslate, targetLanguageName);
 
     // FIX: The `contents` property should be a single `Content` object for a single-turn request, not an array containing one.

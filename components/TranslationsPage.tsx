@@ -12,8 +12,8 @@ import { translateText } from '../services/geminiService';
 import { Loader } from './Loader';
 import { TranslateIcon, ClipboardIcon, CheckIcon, SaveIcon, EditIcon, TrashIcon, ChevronDownIcon } from './Icons';
 
-type TargetLanguage = 'en' | 'sn';
-const languageMap: { [key in TargetLanguage]: string } = { en: 'Inglês', sn: 'Shona' };
+type TargetLanguage = 'en';
+const languageMap: { [key in TargetLanguage]: string } = { en: 'Inglês' };
 
 // Sub-component for displaying and editing a single saved translation
 const SavedTranslationItem: React.FC<{
@@ -262,9 +262,6 @@ export const TranslationsPage: React.FC = () => {
                                         <div className="flex flex-wrap gap-2">
                                             <button onClick={() => setTargetLanguage('en')} className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${targetLanguage === 'en' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>
                                                 Inglês
-                                            </button>
-                                            <button onClick={() => setTargetLanguage('sn')} className={`px-4 py-2 text-sm font-medium rounded-full transition-colors ${targetLanguage === 'sn' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>
-                                                Shona
                                             </button>
                                         </div>
                                         <button

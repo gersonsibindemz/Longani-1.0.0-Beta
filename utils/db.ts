@@ -53,7 +53,7 @@ export interface SavedTranslation {
   transcriptionId: string;
   originalFilename: string;
   date: number;
-  targetLanguage: 'en' | 'sn' | string;
+  targetLanguage: 'en' | string;
   translatedText: string;
   isFavorite?: boolean;
 }
