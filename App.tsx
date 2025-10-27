@@ -7,7 +7,6 @@ import { ProgressBar } from './components/ProgressBar';
 import { Loader } from './components/Loader';
 import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon } from './components/Icons';
 import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, getNumericProcessingTimeEstimate, formatProcessingTime } from './utils/audioUtils';
-import { ThemeSwitcher } from './components/ThemeSwitcher';
 import { HistoryPage } from './components/HistoryPage';
 import { RecordingsPage } from './components/RecordingsPage';
 // FIX: Imported the `updateTranscription` function to allow saving refined transcription data to the database.
@@ -23,6 +22,7 @@ import { SignUpPage } from './components/SignUpPage';
 import { ProfilePage } from './components/ProfilePage';
 import type { User } from './components/ProfilePage';
 import { TeamsPage } from './components/TeamsPage';
+import DesktopNotice from './components/DesktopNotice';
 
 
 type ProcessStage = 'idle' | 'transcribing' | 'cleaning' | 'completed';
@@ -78,10 +78,8 @@ const App: React.FC = () => {
   const [precisionPotential, setPrecisionPotential] = useState<number | null>(null);
   const [initialPrecision, setInitialPrecision] = useState<number | null>(null);
   const [isAppVisible, setIsAppVisible] = useState(false);
-  const [showExitToast, setShowExitToast] = useState(false);
   const [theme, setTheme] = useState<Theme>('dark');
   const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>('pt');
-  const [isPWA, setIsPWA] = useState(false);
   const [expandedTranscript, setExpandedTranscript] = useState<ExpandedTranscript>('none');
   const [fileSelectionSuccess, setFileSelectionSuccess] = useState(false);
   const [outputPreference, setOutputPreference] = useState<OutputPreference>('both');
@@ -92,7 +90,7 @@ const App: React.FC = () => {
   const [currentTranscriptionId, setCurrentTranscriptionId] = useState<string | null>(null);
   const [recentTranscriptions, setRecentTranscriptions] = useState<Transcription[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [showDesktopMessage, setShowDesktopMessage] = useState(false);
+  const [showDesktopLock, setShowDesktopLock] = useState(window.innerWidth >= 1024);
   
   // State for real-time progress and final stats
   const [audioDuration, setAudioDuration] = useState<number>(0);
@@ -184,7 +182,7 @@ const App: React.FC = () => {
     }
   }, [page]);
 
-  // This useEffect runs once on mount to detect PWA, load theme, and handle initial loading animation.
+  // This useEffect runs once on mount to load user, theme, and handle initial loading animation.
   useEffect(() => {
     const savedUserJSON = localStorage.getItem('longaniUser');
     if (savedUserJSON) {
@@ -200,48 +198,46 @@ const App: React.FC = () => {
         }
     }
 
-    const pwaQuery = window.matchMedia('(display-mode: standalone)');
-    if (pwaQuery.matches) {
-      setIsPWA(true);
-      const storedTheme = localStorage.getItem('theme') as Theme | null;
-      if (storedTheme && ['light', 'dark'].includes(storedTheme)) {
-        setTheme(storedTheme);
-      }
-      const storedLanguage = localStorage.getItem('preferredLanguage') as PreferredLanguage | null;
-      if (storedLanguage && ['pt', 'en'].includes(storedLanguage)) {
-        setPreferredLanguage(storedLanguage);
-      }
-      // For PWA, show the app immediately without a video splash screen.
-      setIsAppVisible(true);
-    } else {
-      // For non-PWA, use image preloading.
-      const img = new Image();
-      img.src = longaniLogoUrl;
-      const showApp = () => setIsAppVisible(true);
-
-      img.onload = showApp;
-      img.onerror = showApp; // Show app even if logo fails
-
-      // Fallback timer for cached images
-      const timer = setTimeout(showApp, 2500);
-
-      return () => {
-        clearTimeout(timer);
-        img.onload = null;
-        img.onerror = null;
-      };
+    const storedTheme = localStorage.getItem('theme') as Theme | null;
+    if (storedTheme && ['light', 'dark'].includes(storedTheme)) {
+      setTheme(storedTheme);
     }
+    const storedLanguage = localStorage.getItem('preferredLanguage') as PreferredLanguage | null;
+    if (storedLanguage && ['pt', 'en'].includes(storedLanguage)) {
+      setPreferredLanguage(storedLanguage);
+    }
+
+    const img = new Image();
+    img.src = longaniLogoUrl;
+    const showApp = () => setIsAppVisible(true);
+
+    img.onload = showApp;
+    img.onerror = showApp; // Show app even if logo fails
+
+    // Fallback timer for cached images
+    const timer = setTimeout(showApp, 2500);
+
+    return () => {
+      clearTimeout(timer);
+      img.onload = null;
+      img.onerror = null;
+    };
   }, []);
   
   // This useEffect handles the desktop message banner.
   useEffect(() => {
-    const dismissed = localStorage.getItem('desktopMessageDismissed') === 'true';
-    const isDesktop = window.innerWidth >= 640; // 'sm' breakpoint
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    const checkScreenSize = () => {
+        setShowDesktopLock(window.innerWidth >= 1024);
+    };
 
-    if (!dismissed && isDesktop && !isStandalone) {
-        setShowDesktopMessage(true);
-    }
+    window.addEventListener('resize', checkScreenSize);
+    
+    // Initial check
+    checkScreenSize();
+
+    return () => {
+        window.removeEventListener('resize', checkScreenSize);
+    };
   }, []);
 
   // This useEffect handles applying the theme and saving the preference.
@@ -252,14 +248,12 @@ const App: React.FC = () => {
       document.documentElement.classList.remove('dark');
     }
     
-    if (isPWA) {
-      try {
-        localStorage.setItem('theme', theme);
-      } catch (e) {
-        console.warn('Não foi possível guardar o tema no localStorage:', e);
-      }
+    try {
+      localStorage.setItem('theme', theme);
+    } catch (e) {
+      console.warn('Não foi possível guardar o tema no localStorage:', e);
     }
-  }, [theme, isPWA]);
+  }, [theme]);
 
   const handleSetPreferredLanguage = (lang: PreferredLanguage) => {
     setPreferredLanguage(lang);
@@ -269,41 +263,6 @@ const App: React.FC = () => {
         console.warn('Não foi possível guardar o idioma no localStorage:', e);
     }
   };
-
-  useEffect(() => {
-    // This feature is only for installed PWAs on mobile-like devices where a back button closes the app
-    if (isPWA) {
-        let allowExit = false;
-        // Use ReturnType<typeof setTimeout> for cross-environment compatibility of timer IDs.
-        let exitTimer: ReturnType<typeof setTimeout> | null = null;
-
-        const handleBackButton = (event: PopStateEvent) => {
-            if (!allowExit) {
-                // Prevent exit on first press
-                history.pushState(null, '', location.href);
-
-                setShowExitToast(true);
-                allowExit = true;
-
-                if (exitTimer) clearTimeout(exitTimer);
-                exitTimer = setTimeout(() => {
-                    setShowExitToast(false);
-                    allowExit = false;
-                }, 2000); // 2-second window to press back again
-            }
-            // On second press, allowExit is true, so we do nothing, letting the back navigation proceed.
-        };
-        
-        // Push an initial state to be able to intercept the first back press
-        history.pushState(null, '', location.href);
-        window.addEventListener('popstate', handleBackButton);
-
-        return () => {
-            window.removeEventListener('popstate', handleBackButton);
-            if (exitTimer) clearTimeout(exitTimer);
-        };
-    }
-  }, [isPWA]);
 
   // Effect to clean up the audio object URLs to prevent memory leaks.
   useEffect(() => {
@@ -649,11 +608,6 @@ const App: React.FC = () => {
     localStorage.setItem('longaniUser', JSON.stringify(finalUser));
   };
 
-  const handleDismissDesktopMessage = () => {
-    setShowDesktopMessage(false);
-    localStorage.setItem('desktopMessageDismissed', 'true');
-  };
-  
   const isProcessing = processStage === 'transcribing' || processStage === 'cleaning';
   const isAccordionMode = processStage === 'completed' && !advancedTranscript;
   const finalDisplayIsSingleColumn = (processStage === 'completed' && outputPreference !== 'both') || !!advancedTranscript;
@@ -938,21 +892,14 @@ const App: React.FC = () => {
         );
     }
   };
+  
+  if (showDesktopLock) {
+    return <DesktopNotice />;
+  }
 
   return (
     <>
       <div className={`min-h-screen flex flex-col transition-opacity duration-500 ease-in-out ${isAppVisible ? 'opacity-100' : 'opacity-0'} ${nowPlaying ? 'pb-24 sm:pb-20' : ''}`}>
-        {showDesktopMessage && (
-            <div className="hidden sm:flex items-center justify-between gap-4 bg-cyan-100 dark:bg-cyan-900/50 px-4 py-2 text-sm text-cyan-800 dark:text-cyan-200">
-                <div className="flex items-center gap-3">
-                    <InfoIcon className="w-5 h-5 flex-shrink-0" />
-                    <p>Longani foi otimizado para uma experiência de aplicação móvel. Para o melhor desempenho, instale o nosso PWA no seu telemóvel.</p>
-                </div>
-                <button onClick={handleDismissDesktopMessage} aria-label="Dispensar mensagem" className="p-1 rounded-full hover:bg-cyan-200/50 dark:hover:bg-cyan-800/50 flex-shrink-0">
-                    <CloseIcon className="w-4 h-4" />
-                </button>
-            </div>
-        )}
         {page !== 'login' && page !== 'signup' && (
           <Header 
             page={page} 
@@ -980,16 +927,6 @@ const App: React.FC = () => {
           onClose={handleCloseNowPlaying} 
         />
       )}
-      {showExitToast && (
-          <div
-            role="status"
-            aria-live="polite"
-            className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-800 px-4 py-2 rounded-full text-sm shadow-lg select-none z-[100] animate-fade-in-up"
-          >
-            Pressione novamente para sair
-          </div>
-      )}
-      {isPWA && page !== 'login' && page !== 'signup' && <ThemeSwitcher setTheme={setTheme} isEffectivelyDark={isEffectivelyDark} />}
        <RefineModal
         isOpen={isRefineModalOpen}
         onClose={() => setIsRefineModalOpen(false)}

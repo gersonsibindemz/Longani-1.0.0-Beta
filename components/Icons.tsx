@@ -347,3 +347,21 @@ export const CameraIcon: React.FC<{className?: string}> = ({className}) => (
     </svg>
   </span>
 );
+
+export const SmartphoneIcon: React.FC<{className?: string}> = ({className}) => (
+  <span className={`inline-block ${className || ''}`}>
+    <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 26 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
+      <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+      <line x1="12" y1="18" x2="12.01" y2="18"></line>
+    </svg>
+  </span>
+);
+
+export const TabletIcon: React.FC<{className?: string}> = ({className}) => (
+  <span className={`inline-block ${className || ''}`}>
+    <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 26 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
+      <rect x="4" y="2" width="16" height="20" rx="2" ry="2"></rect>
+      <line x1="12" y1="18" x2="12.01" y2="18"></line>
+    </svg>
+  </span>
+);
