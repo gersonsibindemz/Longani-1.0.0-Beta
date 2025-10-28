@@ -5,8 +5,8 @@ import { FileUpload } from './components/FileUpload';
 import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { ProgressBar } from './components/ProgressBar';
 import { Loader } from './components/Loader';
-import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon, SearchIcon, WaveformIcon, TranslateIcon } from './components/Icons';
-import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, getNumericProcessingTimeEstimate, formatProcessingTime, translateLanguageName } from './utils/audioUtils';
+import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon, SearchIcon, WaveformIcon, TranslateIcon, UsersIcon } from './components/Icons';
+import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, getNumericProcessingTimeEstimate, formatProcessingTime, translateLanguageName, isTrialActive, getTrialDaysRemaining, getPlanLimits, calculateMonthlyUsage } from './utils/audioUtils';
 import { HistoryPage } from './components/HistoryPage';
 import { RecordingsPage } from './components/RecordingsPage';
 // FIX: Imported the `updateTranscription` function to allow saving refined transcription data to the database.
@@ -20,9 +20,10 @@ import { RefineModal } from './components/RefineModal';
 import type { RefineContentType, RefineOutputFormat } from './services/geminiService';
 import { SignUpPage } from './components/SignUpPage';
 import { ProfilePage } from './components/ProfilePage';
-import type { User } from './components/ProfilePage';
+import type { User } from './utils/db';
 import { TeamsPage } from './components/TeamsPage';
 import DesktopNotice from './components/DesktopNotice';
+import { PlansPage } from './components/PlansPage';
 
 
 type ProcessStage = 'idle' | 'transcribing' | 'cleaning' | 'completed';
@@ -206,6 +207,21 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
     );
 };
 
+const FeatureLockedPage: React.FC<{featureName: string, requiredPlan: string}> = ({featureName, requiredPlan}) => (
+    <main className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow flex items-center justify-center">
+        <div className="text-center py-16 animate-fade-in-up">
+            <UsersIcon className="w-24 h-24 text-gray-300 dark:text-gray-600 mx-auto" />
+            <h1 className="mt-4 text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200">Funcionalidade {featureName} Bloqueada</h1>
+            <p className="mt-2 max-w-prose mx-auto text-gray-600 dark:text-gray-400">
+                Esta funcionalidade está disponível apenas para utilizadores com o plano <span className="font-semibold">{requiredPlan}</span>.
+            </p>
+            <a href="#/plans" className="inline-block mt-6 px-6 py-2.5 text-sm font-bold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
+                Ver Planos e Fazer Upgrade
+            </a>
+        </div>
+    </main>
+);
+
 
 const App: React.FC = () => {
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -213,7 +229,7 @@ const App: React.FC = () => {
   const [rawTranscript, setRawTranscript] = useState<string>('');
   const [cleanedTranscript, setCleanedTranscript] = useState<string>('');
   const [processStage, setProcessStage] = useState<ProcessStage>('idle');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<React.ReactNode | null>(null);
   const [fileInputKey, setFileInputKey] = useState<number>(Date.now());
   const [estimatedTime, setEstimatedTime] = useState<string | null>(null);
   const [precisionPotential, setPrecisionPotential] = useState<number | null>(null);
@@ -233,6 +249,7 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showDesktopLock, setShowDesktopLock] = useState(window.innerWidth >= 1280);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [monthlyUsage, setMonthlyUsage] = useState(0);
   
   // State for real-time progress and final stats
   const [audioDuration, setAudioDuration] = useState<number>(0);
@@ -329,6 +346,26 @@ const App: React.FC = () => {
     }
   }, [page]);
 
+  // This useEffect calculates the user's monthly usage and runs whenever the user or page changes,
+  // or when a transcription process completes, ensuring the data is always fresh.
+  useEffect(() => {
+    const calculateUsage = async () => {
+        if (currentUser) {
+            try {
+                const all = await getAllTranscriptions();
+                const usage = calculateMonthlyUsage(all);
+                setMonthlyUsage(usage);
+            } catch (e) {
+                console.error("Failed to calculate monthly usage:", e);
+            }
+        } else {
+            setMonthlyUsage(0); // Reset if no user is logged in
+        }
+    };
+
+    calculateUsage();
+  }, [currentUser, page, processStage]);
+
   // This useEffect runs once on mount to load user, theme, and handle initial loading animation.
   useEffect(() => {
     const savedUserJSON = localStorage.getItem('longaniUser');
@@ -337,6 +374,9 @@ const App: React.FC = () => {
             const user = JSON.parse(savedUserJSON);
             if (!user.status) { // Handle old user objects from before the status field was added
                 user.status = 'active';
+            }
+            if (!user.plan) { // Add default plan if missing
+                user.plan = 'trial';
             }
             setCurrentUser(user);
         } catch (e) {
@@ -587,12 +627,43 @@ const App: React.FC = () => {
     setNowPlayingUrl(url);
   };
 
+    const trialHasExpired = !!currentUser?.createdAt && !isTrialActive(currentUser.createdAt);
+    const isFeatureLocked = currentUser?.plan === 'trial' && trialHasExpired;
+
   const handleProcessAudio = useCallback(async () => {
     const audioToProcess = audioFile;
 
-    if (!audioFile || !audioToProcess) {
-      setError('Por favor, selecione um ficheiro de áudio para processar.');
+    if (!audioFile || !audioToProcess || !currentUser) {
+      setError('Por favor, selecione um ficheiro de áudio e inicie a sessão para processar.');
       return;
+    }
+    
+    if (isFeatureLocked) {
+        setError(
+            <>
+                O seu período de teste terminou. Por favor, <a href="#/plans" className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para continuar a transcrever.
+            </>
+        );
+        return;
+    }
+    
+    const limits = getPlanLimits();
+    const currentPlanLimit = limits[currentUser.plan || 'básico'];
+    
+    if (currentPlanLimit !== Infinity) {
+        const allTranscriptions = await getAllTranscriptions();
+        const usage = calculateMonthlyUsage(allTranscriptions);
+
+        if (usage + audioDuration > currentPlanLimit) {
+            const usageMinutes = Math.round(usage / 60);
+            const limitHours = Math.round(currentPlanLimit / 3600);
+            setError(
+                <>
+                    Atingiu o seu limite mensal de {limitHours} horas ({usageMinutes} min. usados). Por favor, <a href="#/plans" className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para continuar a transcrever.
+                </>
+            );
+            return;
+        }
     }
     
     if (!detectedLanguage) {
@@ -683,6 +754,7 @@ const App: React.FC = () => {
           rawTranscript: fullRawTranscript,
           cleanedTranscript: finalHtml,
           audioId: audioId,
+          duration: audioDuration,
           isFavorite: false,
           originalLanguage: detectedLanguage,
         });
@@ -694,7 +766,7 @@ const App: React.FC = () => {
       setError(friendlyMessage);
       setProcessStage('idle');
     }
-  }, [audioFile, initialPrecision, currentAudioId, handleCloseNowPlaying, preferredLanguage, audioDuration, detectedLanguage]);
+  }, [audioFile, initialPrecision, currentAudioId, handleCloseNowPlaying, preferredLanguage, audioDuration, detectedLanguage, currentUser, isFeatureLocked]);
 
   const handleRefine = async (contentType: RefineContentType, outputFormat: RefineOutputFormat) => {
     if (!rawTranscript) {
@@ -748,10 +820,31 @@ const App: React.FC = () => {
     window.location.hash = '#/history';
   };
 
-  const handleLoginSuccess = (username: string, email: string) => {
-    const newUser: User = { id: email, name: username, photo: null, status: 'active' };
-    setCurrentUser(newUser);
-    localStorage.setItem('longaniUser', JSON.stringify(newUser));
+  const handleAuthSuccess = (username: string, email: string, isNewUser: boolean) => {
+    const userObject: User = {
+        id: email,
+        name: username,
+        photo: null,
+        status: 'active',
+        plan: isNewUser ? 'trial' : 'básico',
+    };
+    if (isNewUser) {
+        userObject.createdAt = Date.now();
+    } else {
+        // For existing users, preserve their plan from localStorage to avoid resetting it.
+        const savedUserJSON = localStorage.getItem('longaniUser');
+        if (savedUserJSON) {
+            try {
+                const savedUser = JSON.parse(savedUserJSON);
+                if (savedUser.id === email) {
+                    userObject.plan = savedUser.plan || 'básico';
+                    userObject.createdAt = savedUser.createdAt;
+                }
+            } catch (e) { console.error("Could not parse user from storage", e)}
+        }
+    }
+    setCurrentUser(userObject);
+    localStorage.setItem('longaniUser', JSON.stringify(userObject));
     window.location.hash = '#/home';
   };
 
@@ -778,11 +871,13 @@ const App: React.FC = () => {
   const finalDisplayIsSingleColumn = (processStage === 'completed' && outputPreference !== 'both') || !!advancedTranscript;
 
   const renderPage = () => {
+    const shouldShowTrialBanner = isFeatureLocked;
+
     switch (page) {
       case 'login':
-        return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+        return <LoginPage onLoginSuccess={(u, e) => handleAuthSuccess(u, e, false)} />;
       case 'signup':
-        return <SignUpPage onSignUpSuccess={handleLoginSuccess} />;
+        return <SignUpPage onSignUpSuccess={(u, e) => handleAuthSuccess(u, e, true)} />;
       case 'profile':
         return <ProfilePage user={currentUser} onUpdateProfile={handleProfileUpdate} onLogout={handleLogout} />;
       case 'history':
@@ -792,9 +887,15 @@ const App: React.FC = () => {
       case 'favorites':
         return <FavoritesPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} />;
       case 'teams':
+        const canAccessTeams = currentUser?.plan === 'ideal' || currentUser?.plan === 'premium' || (currentUser?.plan === 'trial' && !trialHasExpired);
+        if (!canAccessTeams) {
+            return <FeatureLockedPage featureName="Equipas" requiredPlan="Ideal ou superior" />;
+        }
         return <TeamsPage currentUser={currentUser} onUserUpdate={handleUserUpdate} />;
       case 'translations':
         return <TranslationsPage />;
+      case 'plans':
+        return <PlansPage currentUser={currentUser} onUserUpdate={handleUserUpdate} />;
       case 'home':
       default:
         const recentHistorySection = (
@@ -824,6 +925,19 @@ const App: React.FC = () => {
         );
         return (
           <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow flex flex-col">
+            {shouldShowTrialBanner && (
+                <div className="max-w-3xl mx-auto w-full p-4 mb-6 bg-yellow-100 dark:bg-yellow-900/40 rounded-lg border border-yellow-200 dark:border-yellow-800/60 text-center animate-fade-in">
+                    <p className="font-semibold text-yellow-800 dark:text-yellow-200">
+                        O seu período de teste gratuito terminou.
+                    </p>
+                    <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
+                        Para continuar a transcrever e usar todas as funcionalidades, por favor, escolha um plano.
+                    </p>
+                    <a href="#/plans" className="inline-block mt-3 px-4 py-1.5 text-sm font-bold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
+                        Ver Planos
+                    </a>
+                </div>
+            )}
             {!audioFile && (
               <div className="flex-grow flex flex-col justify-between">
                 <div> {/* Wrapper for top content */}
@@ -1079,7 +1193,26 @@ const App: React.FC = () => {
                     </button>
                     <div className="mt-4">
                         <button
-                            onClick={() => setIsRefineModalOpen(true)}
+                            onClick={() => {
+                                if (isFeatureLocked) {
+                                    setError(<>O seu período de teste terminou. Por favor, <a href="#/plans" className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para aceder a esta funcionalidade.</>);
+                                    window.scrollTo(0, 0);
+                                    return;
+                                }
+                                
+                                const canAccessPremium = currentUser?.plan === 'premium' || (currentUser?.plan === 'trial' && !trialHasExpired);
+
+                                if (!canAccessPremium) {
+                                    setError(
+                                        <>
+                                            O Refinamento Avançado é uma funcionalidade exclusiva do plano Premium. <a href="#/plans" className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">Faça um upgrade</a> para aceder.
+                                        </>
+                                    );
+                                    window.scrollTo(0, 0);
+                                } else {
+                                    setIsRefineModalOpen(true);
+                                }
+                            }}
                             className="font-bold text-[#24a9c5] hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-900 rounded-md p-1"
                         >
                             ou faça um Refinamento Avançado
@@ -1110,6 +1243,7 @@ const App: React.FC = () => {
             onLogout={handleLogout}
             onSearchClick={() => setIsSearchOpen(true)}
             onHomeReset={handleReset}
+            monthlyUsage={monthlyUsage}
           />
         )}
         {renderPage()}

@@ -1,3 +1,5 @@
+import { Plan, Transcription } from "./db";
+
 export const getAudioDuration = (file: File): Promise<number> => {
   return new Promise((resolve, reject) => {
     if (!file || !file.type.startsWith('audio/')) {
@@ -330,4 +332,73 @@ export const translateLanguageName = (englishNames: string | null): string => {
     });
 
     return translatedNames.join(', ');
+};
+
+// --- Trial Period Utilities ---
+
+export const TRIAL_PERIOD_DAYS = 5;
+const TRIAL_PERIOD_MS = TRIAL_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+
+/**
+ * Gets the expiration date of the trial.
+ * @param createdAt The timestamp when the account was created.
+ * @returns The trial end date.
+ */
+export const getTrialEndDate = (createdAt: number): Date => {
+    return new Date(createdAt + TRIAL_PERIOD_MS);
+};
+
+/**
+ * Checks if the user's trial period is currently active.
+ * @param createdAt The timestamp when the account was created.
+ * @returns True if the trial is active, false otherwise.
+ */
+export const isTrialActive = (createdAt?: number): boolean => {
+    if (!createdAt) return false; // No trial if no creation date
+    return Date.now() < (createdAt + TRIAL_PERIOD_MS);
+};
+
+/**
+ * Calculates the number of days remaining in the trial period.
+ * @param createdAt The timestamp when the account was created.
+ * @returns The number of full days remaining. Returns 0 if expired.
+ */
+export const getTrialDaysRemaining = (createdAt?: number): number => {
+    if (!createdAt) return 0;
+    
+    const trialEndTime = createdAt + TRIAL_PERIOD_MS;
+    const now = Date.now();
+
+    if (now >= trialEndTime) {
+        return 0;
+    }
+
+    const diffMs = trialEndTime - now;
+    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+};
+
+// --- Plan Permissions Utilities ---
+
+/**
+ * Returns the monthly transcription limits in seconds for each plan.
+ */
+export const getPlanLimits = (): Record<Plan, number> => ({
+    trial: 3 * 3600,      // 3 hours (same as Básico)
+    básico: 3 * 3600,      // 3 hours
+    ideal: 10 * 3600,     // 10 hours
+    premium: Infinity,
+});
+
+/**
+ * Calculates the total seconds of audio transcribed in the current calendar month.
+ * @param transcriptions A list of all user's transcriptions.
+ * @returns The total duration in seconds.
+ */
+export const calculateMonthlyUsage = (transcriptions: Transcription[]): number => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+    
+    const monthlyTranscriptions = transcriptions.filter(t => t.date >= startOfMonth);
+    
+    return monthlyTranscriptions.reduce((total, t) => total + (t.duration || 0), 0);
 };

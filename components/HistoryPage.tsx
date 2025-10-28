@@ -10,7 +10,8 @@ import { DropdownMenu } from './DropdownMenu';
 import { PropertiesModal } from './PropertiesModal';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
 import type { RefineContentType, RefineOutputFormat } from '../services/geminiService';
-import type { User } from './ProfilePage';
+// FIX: Changed the import source for the User type to the correct central definition in utils/db.
+import type { User } from '../utils/db';
 
 const FOLDER_ID_UNFILED = 'unfiled';
 
@@ -197,7 +198,7 @@ const TranscriptionItem: React.FC<{
     };
 
     const isShared = !!transcript.teamId;
-    const canShare = !!currentUser?.teamId;
+    const canShare = !!currentUser?.teamId && currentUser.plan !== 'básico';
 
     const dropdownOptions = [
         { label: 'Refinar/Editar na Página Principal', icon: <SparkleIcon className="w-4 h-4" />, onClick: handleRefineAndEdit },
@@ -209,7 +210,7 @@ const TranscriptionItem: React.FC<{
             ...folders.map(f => ({ label: f.name, onClick: () => onMoveToFolder(f.id) }))
           ]
         },
-        { label: isShared ? 'Deixar de Partilhar' : 'Partilhar com a Equipa', icon: <UsersIcon className="w-4 h-4" />, onClick: onShareChange, disabled: !canShare && !isShared },
+        { label: isShared ? 'Deixar de Partilhar' : 'Partilhar com a Equipa', icon: <UsersIcon className="w-4 h-4" />, onClick: onShareChange, disabled: (isShared ? false : !canShare) },
         { label: transcript.isFavorite ? 'Remover Favorito' : 'Adicionar Favorito', icon: transcript.isFavorite ? <StarIcon className="w-4 h-4 text-yellow-500" /> : <StarOutlineIcon className="w-4 h-4" />, onClick: () => onSetFavorite(!transcript.isFavorite) },
         { label: 'Apagar', icon: <TrashIcon className="w-4 h-4" />, onClick: onDelete, className: 'text-red-600 dark:text-red-400' },
     ];
@@ -240,6 +241,7 @@ const TranscriptionItem: React.FC<{
                 />
             ) : (
                 <div className="flex items-center gap-2">
+                    {/* FIX: Corrected the prop for the tooltip. The 'title' attribute is now correctly passed to the component. */}
                     {transcript.teamId && <UsersIcon className="w-4 h-4 text-cyan-600 dark:text-cyan-400 flex-shrink-0" title="Partilhado com a equipa"/>}
                     <p className="font-semibold text-gray-800 dark:text-gray-200 truncate pr-2" title={transcript.filename}>
                         {transcript.filename}

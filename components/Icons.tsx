@@ -202,8 +202,9 @@ export const UserIcon: React.FC<{className?: string}> = ({className}) => (
   </span>
 );
 
-export const UsersIcon: React.FC<{className?: string}> = ({className}) => (
-    <span className={`inline-block ${className || ''}`}>
+// FIX: Updated the UsersIcon component to accept and spread additional HTML attributes (like `title`) to its root `span` element.
+export const UsersIcon: React.FC<React.HTMLAttributes<HTMLSpanElement>> = ({className, ...rest}) => (
+    <span className={`inline-block ${className || ''}`} {...rest}>
       <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 26 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
           <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
           <circle cx="9" cy="7" r="4" />
@@ -364,4 +365,13 @@ export const TabletIcon: React.FC<{className?: string}> = ({className}) => (
       <line x1="12" y1="18" x2="12.01" y2="18"></line>
     </svg>
   </span>
+);
+
+export const CreditCardIcon: React.FC<{className?: string}> = ({className}) => (
+    <span className={`inline-block ${className || ''}`}>
+      <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 26 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
+        <rect x="2" y="5" width="20" height="14" rx="2" />
+        <line x1="2" y1="10" x2="22" y2="10" />
+      </svg>
+    </span>
 );

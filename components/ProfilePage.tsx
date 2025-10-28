@@ -1,15 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { CameraIcon, UserIcon } from './Icons';
 import { Loader } from './Loader';
-
-// Define a User type to be used across components
-export interface User {
-  id: string;
-  name: string;
-  photo?: string | null;
-  teamId?: string;
-  status?: 'pending' | 'active';
-}
+// FIX: Imported the User type from the central database definition to ensure consistency.
+import type { User } from '../utils/db';
 
 interface ProfilePageProps {
   user: User | null;
@@ -54,12 +47,11 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onUpdateProfile,
     setIsSaving(true);
     // Simulate save delay
     setTimeout(() => {
+      // FIX: Spread the existing user object to preserve all properties (like plan, createdAt, etc.) during an update.
       const updatedUser: User = {
-        id: user.id, // Preserve existing ID
+        ...user,
         name: name.trim(),
         photo: photoPreview,
-        teamId: user.teamId, // Preserve existing teamId
-        status: user.status || 'active', // Preserve status, default to active
       };
       onUpdateProfile(updatedUser);
       setIsSaving(false);

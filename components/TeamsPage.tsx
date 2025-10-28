@@ -6,7 +6,8 @@ import {
 import { Loader } from './Loader';
 import { ChevronDownIcon, UsersIcon, UserIcon, TrashIcon, CloseIcon, ClipboardIcon, CheckIcon } from './Icons';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
-import type { User } from './ProfilePage';
+// FIX: Changed the import source for the User type to the correct central definition in utils/db.
+import type { User } from '../utils/db';
 import { ConfirmationModal } from './ConfirmationModal';
 import { InviteMemberModal } from './InviteMemberModal';
 import type { RefineContentType, RefineOutputFormat } from '../services/geminiService';
@@ -219,6 +220,12 @@ export const TeamsPage: React.FC<TeamsPageProps> = ({ currentUser, onUserUpdate 
         };
         loadTeamData();
     }, [currentUser, onUserUpdate]);
+
+    const handleNavClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+        event.preventDefault();
+        const targetUrl = new URL(event.currentTarget.href, window.location.origin);
+        window.location.hash = targetUrl.hash;
+    };
     
     const handleCreateTeam = async (name: string) => {
         if (!currentUser) return;
@@ -297,7 +304,7 @@ export const TeamsPage: React.FC<TeamsPageProps> = ({ currentUser, onUserUpdate 
                     <UsersIcon className="w-24 h-24 text-gray-300 dark:text-gray-600 mx-auto" />
                     <h1 className="mt-4 text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200">Acesso Restrito</h1>
                     <p className="mt-2 max-w-prose mx-auto text-gray-600 dark:text-gray-400">
-                        É necessário iniciar sessão para aceder à funcionalidade de equipas. Por favor, <a href="#/login" className="font-medium text-[#24a9c5] hover:underline">entre na sua conta</a> ou <a href="#/signup" className="font-medium text-[#24a9c5] hover:underline">crie uma nova</a>.
+                        É necessário iniciar sessão para aceder à funcionalidade de equipas. Por favor, <a href="#/login" onClick={handleNavClick} className="font-medium text-[#24a9c5] hover:underline">entre na sua conta</a> ou <a href="#/signup" onClick={handleNavClick} className="font-medium text-[#24a9c5] hover:underline">crie uma nova</a>.
                     </p>
                 </div>
             </main>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
     getAllTranscriptions, 
@@ -217,6 +218,12 @@ export const TranslationsPage: React.FC = () => {
         navigator.clipboard.writeText(plainText).then(() => setCopied(true));
     };
 
+    const handleNavClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+        event.preventDefault();
+        const targetUrl = new URL(event.currentTarget.href, window.location.origin);
+        window.location.hash = targetUrl.hash;
+    };
+
     return (
         <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
             <div className="max-w-6xl mx-auto">
@@ -228,7 +235,7 @@ export const TranslationsPage: React.FC = () => {
                 
                 {!isLoading && transcriptions.length === 0 && (
                     <div className="text-center py-10 text-gray-600 dark:text-gray-400">
-                        <p>Nenhuma transcrição encontrada. Crie uma em <a href="#/home" className="font-medium text-[#24a9c5] hover:underline">Nova Transcrição</a> para poder traduzir.</p>
+                        <p>Nenhuma transcrição encontrada. Crie uma em <a href="#/home" onClick={handleNavClick} className="font-medium text-[#24a9c5] hover:underline">Nova Transcrição</a> para poder traduzir.</p>
                     </div>
                 )}
                 

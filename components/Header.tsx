@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { MenuIcon, CloseIcon, UserIcon, SunIcon, MoonIcon, UsersIcon, SearchIcon } from './Icons';
+import { MenuIcon, CloseIcon, UserIcon, SunIcon, MoonIcon, UsersIcon, SearchIcon, CreditCardIcon } from './Icons';
 import { Theme, PreferredLanguage } from '../App';
-import type { User } from './ProfilePage';
+import type { User } from '../utils/db';
+import { isTrialActive, getTrialDaysRemaining, getPlanLimits, TRIAL_PERIOD_DAYS } from '../utils/audioUtils';
 
 // The logo is loaded from an external URL.
 export const longaniLogoUrl = "https://i.postimg.cc/FsF4dhc0/Longani-Logo.png";
@@ -16,9 +17,11 @@ interface HeaderProps {
   onLogout: () => void;
   onSearchClick: () => void;
   onHomeReset: () => void;
+  monthlyUsage: number;
 }
 
-export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferredLanguage, setPreferredLanguage, currentUser, onLogout, onSearchClick, onHomeReset }) => {
+export const Header: React.FC<HeaderProps> = (props) => {
+  const { page, theme, setTheme, preferredLanguage, setPreferredLanguage, currentUser, onLogout, onSearchClick, onHomeReset, monthlyUsage } = props;
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [localTheme, setLocalTheme] = useState(theme);
   const [localLanguage, setLocalLanguage] = useState(preferredLanguage);
@@ -73,6 +76,19 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
     onLogout();
     setIsMenuOpen(false);
   };
+
+  const isTrialPlan = currentUser?.plan === 'trial';
+  const trialIsActive = isTrialActive(currentUser?.createdAt);
+  const trialDaysRemaining = getTrialDaysRemaining(currentUser?.createdAt);
+  const trialProgressPercentage = isTrialPlan && trialIsActive ? (trialDaysRemaining / TRIAL_PERIOD_DAYS) * 100 : 0;
+
+  const planLimits = getPlanLimits();
+  const currentPlanLimit = currentUser ? planLimits[currentUser.plan || 'básico'] : 0;
+  const usagePercentage = currentPlanLimit !== Infinity && currentPlanLimit > 0 ? (monthlyUsage / currentPlanLimit) * 100 : 0;
+  const usageMinutes = Math.floor(monthlyUsage / 60);
+  const limitHours = currentPlanLimit !== Infinity ? Math.round(currentPlanLimit / 3600) : 'Ilimitado';
+  // FIX: Created a separate `limitInMinutes` variable for calculations to avoid performing arithmetic on `limitHours`, which can be a string ('Ilimitado'). This resolves the TypeScript error.
+  const limitInMinutes = typeof limitHours === 'number' ? limitHours * 60 : null;
 
   return (
     <>
@@ -171,6 +187,17 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                     Traduções
                   </a>
                 </li>
+                 <li>
+                  <a
+                    href="#/plans"
+                    onClick={handleNavClick}
+                    className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                      page === 'plans' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    Planos
+                  </a>
+                </li>
                 <li>
                   <a
                     href="#/teams"
@@ -253,7 +280,23 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                 </a>
                 <div>
                     {currentUser ? (
-                      <a href="#/profile" onClick={handleNavClick} className="font-semibold text-gray-800 dark:text-gray-200 hover:underline">{currentUser.name}</a>
+                      <>
+                        <a href="#/profile" onClick={handleNavClick} className="font-semibold text-gray-800 dark:text-gray-200 hover:underline">{currentUser.name}</a>
+                        <a
+                            href="#/plans"
+                            onClick={handleNavClick}
+                            className="flex items-center mt-1 text-xs text-gray-500 dark:text-gray-400 hover:text-[#24a9c5] dark:hover:text-[#24a9c5] transition-colors"
+                        >
+                            <CreditCardIcon className="w-4 h-4 mr-1.5" />
+                            <span>Plano </span>
+                            <span className="capitalize font-semibold ml-1">{currentUser.plan || 'Básico'}</span>
+                            {isTrialActive(currentUser.createdAt) && (
+                                <span className="ml-2 text-xs font-semibold bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full dark:bg-yellow-900 dark:text-yellow-200">
+                                    Trial
+                                </span>
+                            )}
+                        </a>
+                      </>
                     ) : (
                       <a href="#/login" onClick={handleNavClick} className="font-semibold text-gray-800 dark:text-gray-200 hover:underline">
                         Entrar / Cadastrar
@@ -262,6 +305,54 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                 </div>
             </div>
             
+             {/* Usage and Trial Status */}
+            {currentUser && <div className="px-4 py-2 space-y-4 mb-2">
+                {isTrialPlan && trialIsActive && (
+                    <div>
+                        <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400 mb-1">
+                            <span>Teste Gratuito</span>
+                            <span className="font-semibold">{trialDaysRemaining} dia(s) restante(s)</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
+                            <div
+                                className="bg-yellow-400 h-1.5 rounded-full transition-all duration-500"
+                                style={{ width: `${trialProgressPercentage}%` }}
+                                role="progressbar"
+                                aria-valuenow={trialDaysRemaining}
+                                aria-valuemin={0}
+                                aria-valuemax={TRIAL_PERIOD_DAYS}
+                                aria-label={`${trialDaysRemaining} dias de teste restantes`}
+                            ></div>
+                        </div>
+                    </div>
+                )}
+                <div>
+                    <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400 mb-1">
+                        <span>Uso Mensal</span>
+                        <span className="font-semibold">
+                            {limitInMinutes === null
+                                ? `${usageMinutes} min. usados`
+                                // FIX: Used the type-safe `limitInMinutes` variable for the calculation.
+                                : `${usageMinutes} / ${limitInMinutes} min`
+                            }
+                        </span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
+                        <div
+                            className="bg-cyan-500 h-1.5 rounded-full transition-all duration-500"
+                            style={{ width: `${currentPlanLimit === Infinity ? 100 : Math.min(100, usagePercentage)}%` }}
+                            role="progressbar"
+                            aria-valuenow={usageMinutes}
+                            aria-valuemin={0}
+                            // FIX: Used the type-safe `limitInMinutes` variable here for the `aria-valuemax` attribute.
+                            aria-valuemax={limitInMinutes === null ? usageMinutes : limitInMinutes}
+                            // FIX: Used the type-safe `limitInMinutes` variable to construct the `aria-label`, ensuring no arithmetic is performed on a string.
+                            aria-label={`Uso mensal: ${usageMinutes} de ${limitInMinutes === null ? 'ilimitados' : limitInMinutes} minutos`}
+                        ></div>
+                    </div>
+                </div>
+            </div>}
+
             {/* Navigation */}
             <div className="flex-grow">
                 <h3 className="px-4 text-base font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">

@@ -1,11 +1,13 @@
-
 const DB_NAME = 'LonganiDB';
 const DB_VERSION = 7; // Incremented DB version for teams feature
 const STORE_NAME_TRANSCRIPTIONS = 'transcriptions';
 const STORE_NAME_AUDIO = 'audioFiles';
+// FIX: Corrected typo in constant name from STORE_NAME_SAVED_TRANSLations to STORE_NAME_SAVED_TRANSLATIONS.
 const STORE_NAME_SAVED_TRANSLATIONS = 'savedTranslations';
 const STORE_NAME_FOLDERS = 'folders'; // New store for folders
 const STORE_NAME_TEAMS = 'teams'; // New store for teams
+
+export type Plan = 'básico' | 'ideal' | 'premium' | 'trial';
 
 export interface User {
   id: string; // email
@@ -13,6 +15,8 @@ export interface User {
   photo?: string | null;
   teamId?: string;
   status: 'pending' | 'active';
+  plan?: Plan;
+  createdAt?: number;
 }
 
 export interface Team {
@@ -29,6 +33,7 @@ export interface Transcription {
   rawTranscript: string;
   cleanedTranscript: string;
   audioId?: string;
+  duration?: number;
   isFavorite?: boolean;
   tags?: string[]; // For tagging functionality
   folderId?: string; // For folder organization
