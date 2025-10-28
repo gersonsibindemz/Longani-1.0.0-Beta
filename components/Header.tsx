@@ -15,9 +15,10 @@ interface HeaderProps {
   currentUser: User | null;
   onLogout: () => void;
   onSearchClick: () => void;
+  onHomeReset: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferredLanguage, setPreferredLanguage, currentUser, onLogout, onSearchClick }) => {
+export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferredLanguage, setPreferredLanguage, currentUser, onLogout, onSearchClick, onHomeReset }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [localTheme, setLocalTheme] = useState(theme);
   const [localLanguage, setLocalLanguage] = useState(preferredLanguage);
@@ -49,6 +50,13 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
     const targetUrl = new URL(event.currentTarget.href);
     window.location.hash = targetUrl.hash;
     setIsMenuOpen(false); // Close menu on navigation
+  };
+
+  const handleHomeResetClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    onHomeReset();
+    window.location.hash = '#/home';
+    setIsMenuOpen(false);
   };
 
   const toggleMenu = () => {
@@ -111,7 +119,7 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                 <li>
                   <a
                     href="#/home"
-                    onClick={handleNavClick}
+                    onClick={handleHomeResetClick}
                     className={`font-medium hover:text-[#24a9c5] transition-colors ${
                       page === 'home' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
                     }`}
@@ -264,7 +272,7 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                         <li>
                           <a
                               href="#/home"
-                              onClick={handleNavClick}
+                              onClick={handleHomeResetClick}
                               className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
                                 page === 'home' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
                               }`}

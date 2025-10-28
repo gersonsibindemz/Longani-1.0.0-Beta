@@ -1,7 +1,3 @@
-
-
-
-
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { transcribeAudio, cleanTranscript, translateText, refineTranscript, detectLanguage } from './services/geminiService';
 import { Header, longaniLogoUrl } from './components/Header';
@@ -74,19 +70,14 @@ interface SearchModalProps {
   onClose: () => void;
 }
 
-type SearchResult = 
-    | { type: 'transcription', item: Transcription }
-    | { type: 'recording', item: AudioRecording }
-    | { type: 'translation', item: SavedTranslation };
+// Only search transcriptions
+type SearchResult = { type: 'transcription', item: Transcription };
 
 const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
     const [searchTerm, setSearchTerm] = useState('');
     const [isLoading, setIsLoading] = useState(true);
-    const [allData, setAllData] = useState<{
-        transcriptions: Transcription[];
-        recordings: AudioRecording[];
-        translations: SavedTranslation[];
-    }>({ transcriptions: [], recordings: [], translations: [] });
+    // Only store transcriptions
+    const [allTranscriptions, setAllTranscriptions] = useState<Transcription[]>([]);
     const hasLoadedData = useRef(false);
 
     useEffect(() => {
@@ -94,12 +85,9 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
             setIsLoading(true);
             const loadAllData = async () => {
                 try {
-                    const [t, r, s] = await Promise.all([
-                        getAllTranscriptions(),
-                        getAllAudioFiles(),
-                        getAllSavedTranslations(),
-                    ]);
-                    setAllData({ transcriptions: t, recordings: r, translations: s });
+                    // Only fetch transcriptions
+                    const transcriptions = await getAllTranscriptions();
+                    setAllTranscriptions(transcriptions);
                     hasLoadedData.current = true;
                 } catch (e) {
                     console.error("Failed to load data for search", e);
@@ -114,53 +102,35 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
     const searchResults = useMemo((): SearchResult[] => {
         if (!searchTerm.trim()) return [];
         const query = searchTerm.toLowerCase();
+
         const results: SearchResult[] = [];
 
-        allData.transcriptions.forEach(item => {
+        allTranscriptions.forEach(item => {
             if (item.filename.toLowerCase().includes(query) || item.rawTranscript.toLowerCase().includes(query) || item.cleanedTranscript.toLowerCase().includes(query)) {
                 results.push({ type: 'transcription', item });
-            }
-        });
-        allData.recordings.forEach(item => {
-            if (item.name.toLowerCase().includes(query)) {
-                results.push({ type: 'recording', item });
-            }
-        });
-        allData.translations.forEach(item => {
-            if (item.originalFilename.toLowerCase().includes(query) || item.translatedText.toLowerCase().includes(query)) {
-                results.push({ type: 'translation', item });
             }
         });
 
         // Simple relevance sort: filename matches first.
         results.sort((a, b) => {
-            const aName = 'name' in a.item ? a.item.name : ('filename' in a.item ? a.item.filename : a.item.originalFilename);
-            const bName = 'name' in b.item ? b.item.name : ('filename' in b.item ? b.item.filename : b.item.originalFilename);
+            const aName = a.item.filename;
+            const bName = b.item.filename;
             const aMatch = aName.toLowerCase().includes(query);
             const bMatch = bName.toLowerCase().includes(query);
             if (aMatch && !bMatch) return -1;
             if (!aMatch && bMatch) return 1;
-            return 0;
+            return b.item.date - a.item.date; // Secondary sort by date
         });
 
         return results;
-    }, [searchTerm, allData]);
+    }, [searchTerm, allTranscriptions]);
 
     const handleResultClick = (result: SearchResult) => {
         onClose();
         setSearchTerm(''); // Reset for next time
-        switch (result.type) {
-            case 'transcription':
-                sessionStorage.setItem('highlightTranscriptionId', result.item.id);
-                window.location.hash = '#/history';
-                break;
-            case 'recording':
-                window.location.hash = '#/recordings';
-                break;
-            case 'translation':
-                window.location.hash = '#/translations';
-                break;
-        }
+        // Since we only have transcriptions, no switch is needed.
+        sessionStorage.setItem('highlightTranscriptionId', result.item.id);
+        window.location.hash = '#/history';
     };
     
     const inputRef = React.useRef<HTMLInputElement>(null);
@@ -183,7 +153,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
                     type="search"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    placeholder="Pesquisar transcrições, gravações e mais..."
+                    placeholder="Pesquisar nas minhas transcrições..."
                     className="w-full bg-transparent focus:outline-none text-lg text-gray-800 dark:text-gray-200 placeholder:text-gray-400"
                 />
                 <button onClick={onClose} className="p-2 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 rounded-full">
@@ -209,16 +179,14 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
                                 <button onClick={() => handleResultClick(result)} className="w-full text-left p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-[#24a9c5] dark:hover:border-[#24a9c5] hover:shadow-md transition-all">
                                     <div className="flex items-center gap-4">
                                         <div className="p-2 bg-cyan-100 dark:bg-cyan-900/50 rounded-full">
-                                            {result.type === 'transcription' && <HistoryIcon className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />}
-                                            {result.type === 'recording' && <WaveformIcon className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />}
-                                            {result.type === 'translation' && <TranslateIcon className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />}
+                                            <HistoryIcon className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <p className="font-semibold truncate text-gray-800 dark:text-gray-200">
-                                                {result.type === 'recording' ? result.item.name : (result.type === 'translation' ? result.item.originalFilename : result.item.filename)}
+                                                {result.item.filename}
                                             </p>
                                             <p className="text-xs capitalize text-gray-500 dark:text-gray-400">
-                                                {result.type === 'transcription' ? 'Transcrição' : (result.type === 'recording' ? 'Gravação' : 'Tradução')}
+                                                Transcrição
                                             </p>
                                         </div>
                                     </div>
@@ -1141,6 +1109,7 @@ const App: React.FC = () => {
             currentUser={currentUser}
             onLogout={handleLogout}
             onSearchClick={() => setIsSearchOpen(true)}
+            onHomeReset={handleReset}
           />
         )}
         {renderPage()}
