@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { MenuIcon, CloseIcon, UserIcon, SunIcon, MoonIcon, UsersIcon } from './Icons';
+import { MenuIcon, CloseIcon, UserIcon, SunIcon, MoonIcon, UsersIcon, SearchIcon } from './Icons';
 import { Theme, PreferredLanguage } from '../App';
 import type { User } from './ProfilePage';
 
 // The logo is loaded from an external URL.
-export const longaniLogoUrl = "https://i.postimg.cc/Kj4NpTYL/longani-logo-main.png";
+export const longaniLogoUrl = "https://i.postimg.cc/FsF4dhc0/Longani-Logo.png";
 
 interface HeaderProps {
   page: string;
@@ -14,9 +14,10 @@ interface HeaderProps {
   setPreferredLanguage: (lang: PreferredLanguage) => void;
   currentUser: User | null;
   onLogout: () => void;
+  onSearchClick: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferredLanguage, setPreferredLanguage, currentUser, onLogout }) => {
+export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferredLanguage, setPreferredLanguage, currentUser, onLogout, onSearchClick }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [localTheme, setLocalTheme] = useState(theme);
   const [localLanguage, setLocalLanguage] = useState(preferredLanguage);
@@ -69,134 +70,147 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
     <>
       <header className="sticky top-0 z-30 py-2 bg-gray-100/75 dark:bg-gray-900/75 backdrop-blur-xl border-b border-gray-200/50 dark:border-gray-800/50">
         <div className="container mx-auto px-4 flex items-center justify-between">
-          {/* Left side: Logo */}
-          <div className="flex-shrink-0">
-            <a
-              href="#/home"
-              onClick={handleNavClick}
-              aria-label="Página inicial do Longani"
-              className="inline-block rounded-md transition-transform duration-150 ease-in-out active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#24a9c5] dark:focus-visible:ring-offset-gray-900"
-            >
-              <img
-                src={longaniLogoUrl}
-                alt="Longani Logo"
-                className="h-16 -my-2 pointer-events-none select-none"
-                draggable="false"
-                onContextMenu={(e) => e.preventDefault()}
-              />
-            </a>
+          {/* Left side: Mobile Menu and Logo */}
+          <div className="flex items-center gap-2">
+            {/* Mobile Menu Button (visible only on small screens) */}
+            <div className="xl:hidden">
+              <button
+                onClick={toggleMenu}
+                aria-label={isMenuOpen ? "Fechar menu" : "Abrir menu"}
+                aria-expanded={isMenuOpen}
+                aria-controls="mobile-menu"
+                className="p-2 text-gray-700 dark:text-gray-300 hover:text-[#24a9c5] dark:hover:text-[#24a9c5] relative z-50"
+              >
+                {isMenuOpen ? <CloseIcon className="w-6 h-6" /> : <MenuIcon className="w-6 h-6" />}
+              </button>
+            </div>
+            
+            {/* Logo */}
+            <div className="flex-shrink-0">
+              <a
+                href="#/home"
+                onClick={handleNavClick}
+                aria-label="Página inicial do Longani"
+                className="inline-block rounded-md transition-transform duration-150 ease-in-out active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#24a9c5] dark:focus-visible:ring-offset-gray-900"
+              >
+                <img
+                  src={longaniLogoUrl}
+                  alt="Longani Logo"
+                  className="h-16 -my-2 pointer-events-none select-none"
+                  draggable="false"
+                  onContextMenu={(e) => e.preventDefault()}
+                />
+              </a>
+            </div>
           </div>
           
-          {/* Right side: Desktop Menu (hidden on small screens) */}
-          <nav className="hidden sm:block">
-            <ul className="flex items-center gap-6">
-              <li>
-                <a
-                  href="#/home"
-                  onClick={handleNavClick}
-                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                    page === 'home' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                  }`}
-                >
-                  Nova Transcrição
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#/recordings"
-                  onClick={handleNavClick}
-                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                    page === 'recordings' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                  }`}
-                >
-                  Gravações
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#/history"
-                  onClick={handleNavClick}
-                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                    page === 'history' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                  }`}
-                >
-                  Minhas Transcrições
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#/favorites"
-                  onClick={handleNavClick}
-                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                    page === 'favorites' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                  }`}
-                >
-                  Favoritos
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#/translations"
-                  onClick={handleNavClick}
-                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                    page === 'translations' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                  }`}
-                >
-                  Traduções
-                </a>
-              </li>
-              <li>
-                <a
-                  href="#/teams"
-                  onClick={handleNavClick}
-                  className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                    page === 'teams' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                  }`}
-                >
-                  Equipa
-                </a>
-              </li>
-              {currentUser ? (
-                <>
-                  <li>
-                    <a
-                      href="#/profile"
-                      onClick={handleNavClick}
-                      className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                        page === 'profile' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                      }`}
-                    >
-                      Meu Perfil
-                    </a>
-                  </li>
-                  <li>
-                    <button onClick={onLogout} className="font-medium text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] transition-colors">
-                      Sair
-                    </button>
-                  </li>
-                </>
-              ) : (
+          {/* Right side: Desktop Menu and Search */}
+          <div className="flex items-center gap-4">
+            <nav className="hidden xl:block">
+              <ul className="flex items-center gap-6">
                 <li>
-                  <a href="#/login" onClick={handleNavClick} className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                      page === 'login' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                  }`}>
-                    Entrar / Cadastrar
+                  <a
+                    href="#/home"
+                    onClick={handleNavClick}
+                    className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                      page === 'home' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    Nova Transcrição
                   </a>
                 </li>
-              )}
-            </ul>
-          </nav>
-
-          {/* Right side: Mobile Menu Button (visible only on small screens) */}
-          <div className="sm:hidden">
+                <li>
+                  <a
+                    href="#/recordings"
+                    onClick={handleNavClick}
+                    className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                      page === 'recordings' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    Gravações
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="#/history"
+                    onClick={handleNavClick}
+                    className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                      page === 'history' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    Minhas Transcrições
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="#/favorites"
+                    onClick={handleNavClick}
+                    className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                      page === 'favorites' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    Favoritos
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="#/translations"
+                    onClick={handleNavClick}
+                    className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                      page === 'translations' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    Traduções
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="#/teams"
+                    onClick={handleNavClick}
+                    className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                      page === 'teams' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                    }`}
+                  >
+                    Equipa
+                  </a>
+                </li>
+                {currentUser ? (
+                  <>
+                    <li>
+                      <a
+                        href="#/profile"
+                        onClick={handleNavClick}
+                        className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                          page === 'profile' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                        }`}
+                      >
+                        Meu Perfil
+                      </a>
+                    </li>
+                    <li>
+                      <button onClick={onLogout} className="font-medium text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] transition-colors">
+                        Sair
+                      </button>
+                    </li>
+                  </>
+                ) : (
+                  <li>
+                    <a href="#/login" onClick={handleNavClick} className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                        page === 'login' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                    }`}>
+                      Entrar / Cadastrar
+                    </a>
+                  </li>
+                )}
+              </ul>
+            </nav>
+            {/* Search Button */}
             <button
-              onClick={toggleMenu}
-              aria-label={isMenuOpen ? "Fechar menu" : "Abrir menu"}
-              aria-expanded={isMenuOpen}
-              aria-controls="mobile-menu"
-              className="p-2 text-gray-700 dark:text-gray-300 hover:text-[#24a9c5] dark:hover:text-[#24a9c5] relative z-50"
+              onClick={onSearchClick}
+              aria-label="Pesquisar"
+              className="p-2 text-gray-700 dark:text-gray-300 hover:text-[#24a9c5] dark:hover:text-[#24a9c5] transition-colors rounded-full"
             >
-              {isMenuOpen ? <CloseIcon className="w-6 h-6" /> : <MenuIcon className="w-6 h-6" />}
+              <SearchIcon className="w-5 h-5" />
             </button>
           </div>
         </div>
@@ -206,7 +220,7 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
       <div
         role="presentation"
         onClick={() => setIsMenuOpen(false)}
-        className={`sm:hidden fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ${
+        className={`xl:hidden fixed inset-0 bg-black/50 z-40 transition-opacity duration-300 ${
           isMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       />
@@ -214,12 +228,12 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
       {/* Mobile Menu Sidebar */}
       <aside
         id="mobile-menu"
-        className={`sm:hidden fixed top-0 right-0 h-full w-4/5 max-w-xs bg-white/75 dark:bg-gray-800/75 backdrop-blur-xl shadow-xl z-50 transform transition-transform duration-300 ease-in-out ${
-          isMenuOpen ? 'translate-x-0' : 'translate-x-full'
+        className={`xl:hidden fixed top-0 left-0 h-full w-4/5 max-w-xs bg-white/75 dark:bg-gray-800/75 backdrop-blur-xl shadow-xl z-50 transform transition-transform duration-300 ease-in-out ${
+          isMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
         aria-hidden={!isMenuOpen}
       >
-        <div className="p-4 flex flex-col h-full">
+        <div className="p-4 flex flex-col h-full overflow-y-auto">
             {/* Sidebar Header - User Profile */}
             <div className="flex items-center gap-3 pb-4 mb-4 border-b border-gray-200/60 dark:border-gray-700/60">
                 <a href="#/profile" onClick={handleNavClick} className="w-12 h-12 flex-shrink-0 flex items-center justify-center bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-800 ring-transparent hover:ring-[#24a9c5] transition-shadow">
@@ -242,8 +256,8 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
             
             {/* Navigation */}
             <div className="flex-grow">
-                <h3 className="px-4 text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">
-                    Dashboard
+                <h3 className="px-4 text-base font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                    Painel
                 </h3>
                 <nav>
                     <ul className="flex flex-col gap-2">
@@ -343,7 +357,7 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
             {/* Preferences & Footer Section */}
             <div>
               <div className="pt-4 border-t border-gray-200/60 dark:border-gray-700/60">
-                <h3 className="px-4 text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">
+                <h3 className="px-4 text-base font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
                     Preferências
                 </h3>
                 <div className="px-4 py-2 space-y-4">
@@ -390,7 +404,7 @@ export const Header: React.FC<HeaderProps> = ({ page, theme, setTheme, preferred
                     href="mailto:gersonsibinde64@gmail.com?subject=Longani%20App%20Issue%20Report"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="block text-center text-sm font-medium text-gray-700 dark:text-gray-300 hover:underline mb-4"
+                    className="block text-center text-xs text-gray-700 dark:text-gray-300 hover:underline mb-4"
                   >
                     Reportar um Problema
                   </a>

@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader } from './Loader';
 import { ClipboardIcon, CheckIcon, ChevronDownIcon } from './Icons';
 
 interface TranscriptDisplayProps {
-  title: string;
+  title: React.ReactNode;
   text: string;
   isLoading: boolean;
   isComplete: boolean;

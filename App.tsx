@@ -1,16 +1,20 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
-import { transcribeAudio, cleanTranscript, translateText, refineTranscript } from './services/geminiService';
+
+
+
+
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { transcribeAudio, cleanTranscript, translateText, refineTranscript, detectLanguage } from './services/geminiService';
 import { Header, longaniLogoUrl } from './components/Header';
 import { FileUpload } from './components/FileUpload';
 import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { ProgressBar } from './components/ProgressBar';
 import { Loader } from './components/Loader';
-import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon } from './components/Icons';
-import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, getNumericProcessingTimeEstimate, formatProcessingTime } from './utils/audioUtils';
+import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon, SearchIcon, WaveformIcon, TranslateIcon } from './components/Icons';
+import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, getNumericProcessingTimeEstimate, formatProcessingTime, translateLanguageName } from './utils/audioUtils';
 import { HistoryPage } from './components/HistoryPage';
 import { RecordingsPage } from './components/RecordingsPage';
 // FIX: Imported the `updateTranscription` function to allow saving refined transcription data to the database.
-import { addTranscription, addAudioFile, AudioRecording, getAllTranscriptions, Transcription, getTranscriptionById, getAudioFile, updateTranscription, deleteTranscription } from './utils/db';
+import { addTranscription, addAudioFile, AudioRecording, getAllTranscriptions, Transcription, getTranscriptionById, getAudioFile, updateTranscription, deleteTranscription, getAllAudioFiles, getAllSavedTranslations, SavedTranslation } from './utils/db';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FavoritesPage } from './components/FavoritesPage';
 import { TranslationsPage } from './components/TranslationsPage';
@@ -34,11 +38,10 @@ type OutputPreference = 'both' | 'raw' | 'cleaned';
 
 const languageMap: { [key in PreferredLanguage]: string } = {
   pt: 'Português',
-  en: 'Inglês',
+  en: 'English',
 };
 
 const contentLabels: { [key in RefineContentType]: string } = {
-    'team-meeting': 'Reunião da Equipa',
     'meeting': 'Reunião',
     'sermon': 'Sermão',
     'interview': 'Entrevista',
@@ -66,6 +69,176 @@ const getRefinedTitle = (contentType?: string, outputFormat?: string): string =>
 
 const getCurrentPage = () => window.location.hash.replace(/^#\/?/, '') || 'home';
 
+interface SearchModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+type SearchResult = 
+    | { type: 'transcription', item: Transcription }
+    | { type: 'recording', item: AudioRecording }
+    | { type: 'translation', item: SavedTranslation };
+
+const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isLoading, setIsLoading] = useState(true);
+    const [allData, setAllData] = useState<{
+        transcriptions: Transcription[];
+        recordings: AudioRecording[];
+        translations: SavedTranslation[];
+    }>({ transcriptions: [], recordings: [], translations: [] });
+    const hasLoadedData = useRef(false);
+
+    useEffect(() => {
+        if (isOpen && !hasLoadedData.current) {
+            setIsLoading(true);
+            const loadAllData = async () => {
+                try {
+                    const [t, r, s] = await Promise.all([
+                        getAllTranscriptions(),
+                        getAllAudioFiles(),
+                        getAllSavedTranslations(),
+                    ]);
+                    setAllData({ transcriptions: t, recordings: r, translations: s });
+                    hasLoadedData.current = true;
+                } catch (e) {
+                    console.error("Failed to load data for search", e);
+                } finally {
+                    setIsLoading(false);
+                }
+            };
+            loadAllData();
+        }
+    }, [isOpen]);
+    
+    const searchResults = useMemo((): SearchResult[] => {
+        if (!searchTerm.trim()) return [];
+        const query = searchTerm.toLowerCase();
+        const results: SearchResult[] = [];
+
+        allData.transcriptions.forEach(item => {
+            if (item.filename.toLowerCase().includes(query) || item.rawTranscript.toLowerCase().includes(query) || item.cleanedTranscript.toLowerCase().includes(query)) {
+                results.push({ type: 'transcription', item });
+            }
+        });
+        allData.recordings.forEach(item => {
+            if (item.name.toLowerCase().includes(query)) {
+                results.push({ type: 'recording', item });
+            }
+        });
+        allData.translations.forEach(item => {
+            if (item.originalFilename.toLowerCase().includes(query) || item.translatedText.toLowerCase().includes(query)) {
+                results.push({ type: 'translation', item });
+            }
+        });
+
+        // Simple relevance sort: filename matches first.
+        results.sort((a, b) => {
+            const aName = 'name' in a.item ? a.item.name : ('filename' in a.item ? a.item.filename : a.item.originalFilename);
+            const bName = 'name' in b.item ? b.item.name : ('filename' in b.item ? b.item.filename : b.item.originalFilename);
+            const aMatch = aName.toLowerCase().includes(query);
+            const bMatch = bName.toLowerCase().includes(query);
+            if (aMatch && !bMatch) return -1;
+            if (!aMatch && bMatch) return 1;
+            return 0;
+        });
+
+        return results;
+    }, [searchTerm, allData]);
+
+    const handleResultClick = (result: SearchResult) => {
+        onClose();
+        setSearchTerm(''); // Reset for next time
+        switch (result.type) {
+            case 'transcription':
+                sessionStorage.setItem('highlightTranscriptionId', result.item.id);
+                window.location.hash = '#/history';
+                break;
+            case 'recording':
+                window.location.hash = '#/recordings';
+                break;
+            case 'translation':
+                window.location.hash = '#/translations';
+                break;
+        }
+    };
+    
+    const inputRef = React.useRef<HTMLInputElement>(null);
+    useEffect(() => {
+        if (isOpen) {
+            setTimeout(() => inputRef.current?.focus(), 100);
+        } else {
+            setSearchTerm(''); // Clear search on close
+        }
+    }, [isOpen]);
+
+    if (!isOpen) return null;
+
+    return (
+        <div role="dialog" aria-modal="true" className="fixed inset-0 z-50 flex flex-col bg-gray-100/80 dark:bg-gray-900/80 backdrop-blur-sm animate-fade-in">
+            <header className="flex-shrink-0 p-4 flex items-center gap-4 border-b border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-800/70">
+                <SearchIcon className="w-5 h-5 text-gray-400" />
+                <input
+                    ref={inputRef}
+                    type="search"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Pesquisar transcrições, gravações e mais..."
+                    className="w-full bg-transparent focus:outline-none text-lg text-gray-800 dark:text-gray-200 placeholder:text-gray-400"
+                />
+                <button onClick={onClose} className="p-2 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 rounded-full">
+                    <CloseIcon className="w-6 h-6" />
+                </button>
+            </header>
+            <div className="flex-grow overflow-y-auto p-4 md:p-6">
+              <div className="max-w-3xl mx-auto">
+                {isLoading && (
+                    <div className="flex justify-center items-center h-full py-10">
+                        <Loader className="w-8 h-8 text-[#24a9c5]" />
+                    </div>
+                )}
+                {!isLoading && searchTerm.trim() && searchResults.length === 0 && (
+                    <div className="text-center py-10 text-gray-500">
+                        Nenhum resultado encontrado para "{searchTerm}".
+                    </div>
+                )}
+                {!isLoading && searchResults.length > 0 && (
+                    <ul className="space-y-3">
+                        {searchResults.map((result, index) => (
+                            <li key={`${result.type}-${result.item.id}-${index}`} className="animate-fade-in-up" style={{ animationDelay: `${index * 50}ms` }}>
+                                <button onClick={() => handleResultClick(result)} className="w-full text-left p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-[#24a9c5] dark:hover:border-[#24a9c5] hover:shadow-md transition-all">
+                                    <div className="flex items-center gap-4">
+                                        <div className="p-2 bg-cyan-100 dark:bg-cyan-900/50 rounded-full">
+                                            {result.type === 'transcription' && <HistoryIcon className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />}
+                                            {result.type === 'recording' && <WaveformIcon className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />}
+                                            {result.type === 'translation' && <TranslateIcon className="w-5 h-5 text-cyan-600 dark:text-cyan-400" />}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-semibold truncate text-gray-800 dark:text-gray-200">
+                                                {result.type === 'recording' ? result.item.name : (result.type === 'translation' ? result.item.originalFilename : result.item.filename)}
+                                            </p>
+                                            <p className="text-xs capitalize text-gray-500 dark:text-gray-400">
+                                                {result.type === 'transcription' ? 'Transcrição' : (result.type === 'recording' ? 'Gravação' : 'Tradução')}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                {!isLoading && !searchTerm.trim() && (
+                    <div className="text-center py-10 text-gray-500">
+                        
+                    </div>
+                )}
+              </div>
+            </div>
+        </div>
+    );
+};
+
+
 const App: React.FC = () => {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -90,11 +263,14 @@ const App: React.FC = () => {
   const [currentTranscriptionId, setCurrentTranscriptionId] = useState<string | null>(null);
   const [recentTranscriptions, setRecentTranscriptions] = useState<Transcription[]>([]);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [showDesktopLock, setShowDesktopLock] = useState(window.innerWidth >= 1024);
+  const [showDesktopLock, setShowDesktopLock] = useState(window.innerWidth >= 1280);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   
   // State for real-time progress and final stats
   const [audioDuration, setAudioDuration] = useState<number>(0);
   const [processingTime, setProcessingTime] = useState<string | null>(null);
+  const [isDetectingLanguage, setIsDetectingLanguage] = useState(false);
+  const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
 
   // State for Advanced Refinement
   const [isRefineModalOpen, setIsRefineModalOpen] = useState(false);
@@ -129,6 +305,9 @@ const App: React.FC = () => {
             try {
                 const duration = await getAudioDuration(file);
                 setAudioDuration(duration);
+                 // Since we are loading, we can't re-detect the language easily without the base64.
+                // We'll set a placeholder. The original language is preserved in the raw transcript.
+                setDetectedLanguage(transcription.originalLanguage || 'N/A');
             } catch {
                 // Ignore duration errors on reload
             }
@@ -227,7 +406,7 @@ const App: React.FC = () => {
   // This useEffect handles the desktop message banner.
   useEffect(() => {
     const checkScreenSize = () => {
-        setShowDesktopLock(window.innerWidth >= 1024);
+        setShowDesktopLock(window.innerWidth >= 1280);
     };
 
     window.addEventListener('resize', checkScreenSize);
@@ -305,6 +484,8 @@ const App: React.FC = () => {
     setCurrentTranscriptionId(null);
     setAudioDuration(0);
     setProcessingTime(null);
+    setDetectedLanguage(null);
+    setIsDetectingLanguage(false);
     handleCloseNowPlaying();
     // Reset refinement state
     setIsRefineModalOpen(false);
@@ -312,86 +493,6 @@ const App: React.FC = () => {
     setAdvancedTranscript('');
     setAdvancedTranscriptTitle('');
   }, [audioUrl, handleCloseNowPlaying]);
-
-  const handleFileChange = async (file: File | null) => {
-    handleReset();
-
-    if (file) {
-      if (file.size > MAX_FILE_SIZE_BYTES) {
-        setError(`O ficheiro excede o limite de ${MAX_FILE_SIZE_MB} MB. Por favor, escolha um ficheiro mais pequeno.`);
-        setAudioFile(null);
-        setAudioUrl(null);
-        setFileInputKey(Date.now()); 
-        return;
-      }
-      
-      setAudioFile(file);
-      setAudioUrl(URL.createObjectURL(file));
-      setFileSelectionSuccess(true);
-      setCurrentAudioId(null); // Reset audio ID for new uploads
-
-      try {
-        const duration = await getAudioDuration(file);
-        setAudioDuration(duration); // Store numeric duration for progress calculation
-        setEstimatedTime(estimateProcessingTime(duration));
-        const potential = estimatePrecisionPotential(file.name);
-        setPrecisionPotential(potential);
-        setInitialPrecision(potential);
-      } catch (err) {
-        console.error('Erro ao obter metadados do áudio:', err);
-        const errorMessage = 'Não foi possível ler a duração do áudio. O ficheiro pode estar corrompido ou num formato não suportado.';
-        setError(`${errorMessage} As estimativas não estão disponíveis, mas ainda pode processar o ficheiro.`);
-        setEstimatedTime(null);
-        setPrecisionPotential(null);
-        setInitialPrecision(null);
-      }
-    }
-  };
-
-  const handleTranscribeFromRecordings = async (audio: AudioRecording) => {
-    // Create a File object from the Blob
-    const file = new File([audio.audioBlob], audio.name, {
-      type: audio.audioBlob.type || 'audio/wav', // Provide a default MIME type
-    });
-  
-    // Use a modified file change handler to set up the app state AND the audio ID
-    handleReset();
-    setAudioFile(file);
-    setAudioUrl(URL.createObjectURL(file));
-    setFileSelectionSuccess(true);
-    setCurrentAudioId(audio.id); // IMPORTANT: Link this job to the existing audio file
-
-    try {
-        const duration = await getAudioDuration(file);
-        setAudioDuration(duration);
-        setEstimatedTime(estimateProcessingTime(duration));
-        const potential = estimatePrecisionPotential(file.name);
-        setPrecisionPotential(potential);
-        setInitialPrecision(potential);
-    } catch (err) {
-        // Error handling from the original handleFileChange
-        console.error('Erro ao obter metadados do áudio:', err);
-        const errorMessage = 'Não foi possível ler a duração do áudio. O ficheiro pode estar corrompido ou num formato não suportado.';
-        setError(`${errorMessage} As estimativas não estão disponíveis, mas ainda pode processar o ficheiro.`);
-        setEstimatedTime(null);
-        setInitialPrecision(null);
-    }
-  
-    // Navigate to the home page
-    window.location.hash = '#/home';
-  };
-
-  const handlePlayAudio = (audio: AudioRecording) => {
-    if (nowPlaying?.id === audio.id) {
-        return; 
-    }
-    if (nowPlayingUrl) {
-        URL.revokeObjectURL(nowPlayingUrl);
-    }
-    const url = URL.createObjectURL(audio.audioBlob);
-    setNowPlaying(audio);
-    setNowPlayingUrl(url);
-  };
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -413,6 +514,111 @@ const App: React.FC = () => {
     });
   };
 
+  const handleFileChange = async (file: File | null) => {
+    handleReset();
+
+    if (file) {
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        setError(`O ficheiro excede o limite de ${MAX_FILE_SIZE_MB} MB. Por favor, escolha um ficheiro mais pequeno.`);
+        setAudioFile(null);
+        setAudioUrl(null);
+        setFileInputKey(Date.now()); 
+        return;
+      }
+      
+      setAudioFile(file);
+      setAudioUrl(URL.createObjectURL(file));
+      setFileSelectionSuccess(true);
+      setCurrentAudioId(null); // Reset audio ID for new uploads
+
+      // Start language detection immediately
+      setIsDetectingLanguage(true);
+      setDetectedLanguage(null);
+      try {
+          const audioBase64 = await blobToBase64(file);
+          const lang = await detectLanguage(audioBase64, file.type);
+          setDetectedLanguage(lang);
+      } catch (err) {
+          console.error('Error detecting language:', err);
+          setError("Não foi possível detetar o idioma do áudio. Pode continuar, mas a transcrição pode ser menos precisa.");
+          setDetectedLanguage("Indeterminate"); // Set a fallback
+      } finally {
+          setIsDetectingLanguage(false);
+      }
+
+      try {
+        const duration = await getAudioDuration(file);
+        setAudioDuration(duration); // Store numeric duration for progress calculation
+        setEstimatedTime(estimateProcessingTime(duration));
+        const potential = estimatePrecisionPotential(file.name);
+        setPrecisionPotential(potential);
+        setInitialPrecision(potential);
+      } catch (err) {
+        console.error('Erro ao obter metadados do áudio:', err);
+        const errorMessage = 'Não foi possível ler a duração do áudio. O ficheiro pode estar corrompido ou num formato não suportado.';
+        setError(`${errorMessage} As estimativas não estão disponíveis, mas ainda pode processar o ficheiro.`);
+        setEstimatedTime(null);
+        setPrecisionPotential(null);
+        setInitialPrecision(null);
+      }
+    }
+  };
+
+  const handleTranscribeFromRecordings = async (audio: AudioRecording) => {
+    const file = new File([audio.audioBlob], audio.name, {
+      type: audio.audioBlob.type || 'audio/wav',
+    });
+  
+    handleReset();
+    setAudioFile(file);
+    setAudioUrl(URL.createObjectURL(file));
+    setFileSelectionSuccess(true);
+    setCurrentAudioId(audio.id);
+    
+    setIsDetectingLanguage(true);
+    setDetectedLanguage(null);
+    try {
+        const audioBase64 = await blobToBase64(file);
+        const lang = await detectLanguage(audioBase64, file.type);
+        setDetectedLanguage(lang);
+    } catch (err) {
+        console.error('Error detecting language:', err);
+        setError("Não foi possível detetar o idioma do áudio.");
+        setDetectedLanguage("Indeterminate");
+    } finally {
+        setIsDetectingLanguage(false);
+    }
+
+    try {
+        const duration = await getAudioDuration(file);
+        setAudioDuration(duration);
+        setEstimatedTime(estimateProcessingTime(duration));
+        const potential = estimatePrecisionPotential(file.name);
+        setPrecisionPotential(potential);
+        setInitialPrecision(potential);
+    } catch (err) {
+        console.error('Erro ao obter metadados do áudio:', err);
+        const errorMessage = 'Não foi possível ler a duração do áudio. O ficheiro pode estar corrompido ou num formato não suportado.';
+        setError(`${errorMessage} As estimativas não estão disponíveis, mas ainda pode processar o ficheiro.`);
+        setEstimatedTime(null);
+        setInitialPrecision(null);
+    }
+  
+    window.location.hash = '#/home';
+  };
+
+  const handlePlayAudio = (audio: AudioRecording) => {
+    if (nowPlaying?.id === audio.id) {
+        return; 
+    }
+    if (nowPlayingUrl) {
+        URL.revokeObjectURL(nowPlayingUrl);
+    }
+    const url = URL.createObjectURL(audio.audioBlob);
+    setNowPlaying(audio);
+    setNowPlayingUrl(url);
+  };
+
   const handleProcessAudio = useCallback(async () => {
     const audioToProcess = audioFile;
 
@@ -421,6 +627,11 @@ const App: React.FC = () => {
       return;
     }
     
+    if (!detectedLanguage) {
+        setError("O idioma do áudio ainda não foi detetado. Por favor, aguarde ou recarregue o ficheiro.");
+        return;
+    }
+
     handleCloseNowPlaying();
   
     const transcriptionId = `longani-job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
@@ -447,8 +658,6 @@ const App: React.FC = () => {
         await addAudioFile(newAudioFile);
         audioId = newAudioFile.id;
       } else {
-        // This is an existing audio file. Check for and delete any old transcription
-        // associated with it before creating a new one.
         const oldTranscription = (await getAllTranscriptions()).find(t => t.audioId === audioId);
         if (oldTranscription) {
             await deleteTranscription(oldTranscription.id);
@@ -484,25 +693,12 @@ const App: React.FC = () => {
       if (fullRawTranscript.trim()) {
         setProcessStage('cleaning');
         let cleanedHtml = '';
-        for await (const chunk of cleanTranscript(fullRawTranscript)) {
+        const targetLanguageName = languageMap[preferredLanguage];
+        for await (const chunk of cleanTranscript(fullRawTranscript, detectedLanguage, targetLanguageName)) {
           cleanedHtml += chunk;
-          if (preferredLanguage === 'pt') {
-            setCleanedTranscript(cleanedHtml);
-          }
+          setCleanedTranscript(cleanedHtml);
         }
         finalHtml = cleanedHtml;
-
-        if (preferredLanguage !== 'pt' && cleanedHtml.trim()) {
-          if (preferredLanguage === 'en') {
-            let translatedHtml = '';
-            for await (const chunk of translateText(cleanedHtml, preferredLanguage)) {
-                translatedHtml += chunk;
-                setCleanedTranscript(translatedHtml);
-            }
-            finalHtml = translatedHtml;
-          }
-        }
-        setCleanedTranscript(finalHtml);
       } else {
         setCleanedTranscript('');
       }
@@ -520,6 +716,7 @@ const App: React.FC = () => {
           cleanedTranscript: finalHtml,
           audioId: audioId,
           isFavorite: false,
+          originalLanguage: detectedLanguage,
         });
         setCurrentTranscriptionId(transcriptionId);
       }
@@ -529,7 +726,7 @@ const App: React.FC = () => {
       setError(friendlyMessage);
       setProcessStage('idle');
     }
-  }, [audioFile, initialPrecision, currentAudioId, handleCloseNowPlaying, preferredLanguage, audioDuration]);
+  }, [audioFile, initialPrecision, currentAudioId, handleCloseNowPlaying, preferredLanguage, audioDuration, detectedLanguage]);
 
   const handleRefine = async (contentType: RefineContentType, outputFormat: RefineOutputFormat) => {
     if (!rawTranscript) {
@@ -633,14 +830,14 @@ const App: React.FC = () => {
       case 'home':
       default:
         const recentHistorySection = (
-            <div className="w-full mt-8 lg:mt-0 animate-fade-in">
-              <div className="bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
-                <h4 className="text-left text-sm font-semibold text-gray-500 dark:text-gray-400 mb-2">Histórico Recente</h4>
+            <div className="w-full mt-12 animate-fade-in">
+              <div className="max-w-3xl mx-auto">
+                <h4 className="text-center text-sm font-semibold text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider">Histórico Recente</h4>
                 {recentTranscriptions.length > 0 ? (
-                    <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                    <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60">
                         {recentTranscriptions.map(t => (
                             <li key={t.id}>
-                                <button onClick={() => handleHistoryClick(t.id)} className="w-full text-left flex justify-between items-center py-3 hover:bg-gray-100/50 dark:hover:bg-gray-700/20 rounded-md transition-colors -mx-2 px-2">
+                                <button onClick={() => handleHistoryClick(t.id)} className="w-full text-left flex justify-between items-center py-3 hover:bg-gray-500/10 rounded-md transition-colors -mx-2 px-2">
                                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate pr-4" title={t.filename}>{t.filename}</span>
                                     <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
                                         {new Date(t.date).toLocaleString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -660,8 +857,8 @@ const App: React.FC = () => {
         return (
           <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow flex flex-col">
             {!audioFile && (
-              <div className="flex-grow lg:grid lg:grid-cols-3 lg:gap-12 lg:items-start">
-                <div className="lg:col-span-2 flex-grow flex flex-col justify-center h-full">
+              <div className="flex-grow flex flex-col justify-between">
+                <div> {/* Wrapper for top content */}
                     <div className="flex-grow flex flex-col justify-center items-center">
                         <div className="max-w-3xl mx-auto w-full bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
                           <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
@@ -673,7 +870,7 @@ const App: React.FC = () => {
                           {preferredLanguage !== 'pt' && (
                               <div className="text-center text-sm text-cyan-700 dark:text-cyan-400 mt-4 bg-cyan-50 dark:bg-cyan-900/30 p-3 rounded-lg border border-cyan-100 dark:border-cyan-800">
                                   <InfoIcon className="w-4 h-4 inline-block mr-2 align-middle" />
-                                  <span className="align-middle">Nota: A transcrição final será entregue em <strong>{languageMap[preferredLanguage]}</strong>.</span>
+                                  <span className="align-middle">Nota: O texto formatado final será entregue em <strong>{languageMap[preferredLanguage]}</strong>.</span>
                               </div>
                           )}
                         </div>
@@ -687,9 +884,8 @@ const App: React.FC = () => {
                         </div>
                     </div>
                 </div>
-                <aside className="lg:col-span-1 lg:sticky lg:top-24">
-                  {recentHistorySection}
-                </aside>
+                {/* Bottom part */}
+                {recentHistorySection}
               </div>
             )}
 
@@ -726,6 +922,20 @@ const App: React.FC = () => {
                                      </div>
                                  </div>
                               )}
+                               <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
+                                  <TranslateIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
+                                  <div>
+                                      <p className="font-semibold">Idioma Detetado</p>
+                                      {isDetectingLanguage ? (
+                                          <div className="flex items-center gap-2">
+                                              <Loader className="w-4 h-4 text-gray-400" />
+                                              <span className="text-gray-500 dark:text-gray-400 text-xs">A analisar...</span>
+                                          </div>
+                                      ) : (
+                                          <p className="text-gray-600 dark:text-gray-400">{translateLanguageName(detectedLanguage)}</p>
+                                      )}
+                                  </div>
+                              </div>
                           </div>
                            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                             <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
@@ -744,7 +954,7 @@ const App: React.FC = () => {
                     </div>
                 </div>
                 <div className="mt-8 flex flex-col gap-3 items-center justify-center">
-                  <button onClick={handleProcessAudio} disabled={isProcessing} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#24a9c5] text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-[#1e8a9f] disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105">
+                  <button onClick={handleProcessAudio} disabled={isProcessing || isDetectingLanguage} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#24a9c5] text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-[#1e8a9f] disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105">
                     <ArrowRightIcon className="w-5 h-5" />
                     <span>Iniciar Processo</span>
                   </button>
@@ -788,7 +998,7 @@ const App: React.FC = () => {
                         <div className="mt-4">
                           <CustomAudioPlayer src={audioUrl} />
                         </div>
-                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                             {processingTime && (
                                 <div className="flex items-start gap-3 text-gray-700 dark:text-gray-300 p-3 bg-gray-100 dark:bg-gray-900/50 rounded-lg">
                                     <ClockIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
@@ -808,6 +1018,15 @@ const App: React.FC = () => {
                                     </div>
                                 </div>
                             )}
+                             {detectedLanguage && (
+                                <div className="flex items-start gap-3 text-gray-700 dark:text-gray-300 p-3 bg-gray-100 dark:bg-gray-900/50 rounded-lg">
+                                    <TranslateIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
+                                    <div>
+                                        <p className="font-semibold">Idioma Original</p>
+                                        <p className="text-gray-600 dark:text-gray-400">{translateLanguageName(detectedLanguage)}</p>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                       </>
                     ) : (
@@ -824,6 +1043,18 @@ const App: React.FC = () => {
                                   <span>Potencial: {precisionPotential}%</span>
                               </span>
                           )}
+                           {isDetectingLanguage && (
+                               <span className="flex items-center gap-1">
+                                    <Loader className="w-3 h-3"/>
+                                    <span>A detetar idioma...</span>
+                               </span>
+                           )}
+                           {detectedLanguage && !isDetectingLanguage && (
+                               <span className="flex items-center gap-1">
+                                    <TranslateIcon className="w-4 h-4" />
+                                    <span>{translateLanguageName(detectedLanguage)}</span>
+                               </span>
+                           )}
                       </div>
                     )}
                 </div>
@@ -843,7 +1074,7 @@ const App: React.FC = () => {
                         onToggle={() => handleToggleTranscript('raw')}
                     />}
                     {(isProcessing || (processStage === 'completed' && (outputPreference === 'cleaned' || outputPreference === 'both'))) && <TranscriptDisplay 
-                        title="Texto Formatado"
+                        title={`Texto Formatado (${languageMap[preferredLanguage]})`}
                         text={cleanedTranscript}
                         isLoading={processStage === 'cleaning'}
                         isComplete={processStage === 'completed' && cleanedTranscript.length > 0}
@@ -909,6 +1140,7 @@ const App: React.FC = () => {
             setPreferredLanguage={handleSetPreferredLanguage}
             currentUser={currentUser}
             onLogout={handleLogout}
+            onSearchClick={() => setIsSearchOpen(true)}
           />
         )}
         {renderPage()}
@@ -933,6 +1165,7 @@ const App: React.FC = () => {
         onSubmit={handleRefine}
         isRefining={isRefining}
       />
+      <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
     </>
   );
 };

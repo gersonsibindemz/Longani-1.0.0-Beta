@@ -228,7 +228,7 @@ export const TranslationsPage: React.FC = () => {
                 
                 {!isLoading && transcriptions.length === 0 && (
                     <div className="text-center py-10 text-gray-600 dark:text-gray-400">
-                        <p>Nenhuma transcrição encontrada. Crie uma na página inicial para poder traduzir.</p>
+                        <p>Nenhuma transcrição encontrada. Crie uma em <a href="#/home" className="font-medium text-[#24a9c5] hover:underline">Nova Transcrição</a> para poder traduzir.</p>
                     </div>
                 )}
                 

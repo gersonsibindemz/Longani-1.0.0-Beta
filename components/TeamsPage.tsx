@@ -12,7 +12,6 @@ import { InviteMemberModal } from './InviteMemberModal';
 import type { RefineContentType, RefineOutputFormat } from '../services/geminiService';
 
 const contentLabels: { [key in RefineContentType]: string } = {
-    'team-meeting': 'Reunião da Equipa',
     'meeting': 'Reunião',
     'sermon': 'Sermão',
     'interview': 'Entrevista',
@@ -190,7 +189,10 @@ export const TeamsPage: React.FC<TeamsPageProps> = ({ currentUser, onUserUpdate 
     
     useEffect(() => {
         const loadTeamData = async () => {
-            if (!currentUser) return;
+            if (!currentUser) {
+                setIsLoading(false);
+                return;
+            }
             setIsLoading(true);
             setError(null);
             
@@ -289,8 +291,17 @@ export const TeamsPage: React.FC<TeamsPageProps> = ({ currentUser, onUserUpdate 
     }
 
     if (!currentUser) {
-        window.location.hash = '#/login';
-        return null;
+        return (
+            <main className="w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
+                <div className="text-center py-16 animate-fade-in-up">
+                    <UsersIcon className="w-24 h-24 text-gray-300 dark:text-gray-600 mx-auto" />
+                    <h1 className="mt-4 text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200">Acesso Restrito</h1>
+                    <p className="mt-2 max-w-prose mx-auto text-gray-600 dark:text-gray-400">
+                        É necessário iniciar sessão para aceder à funcionalidade de equipas. Por favor, <a href="#/login" className="font-medium text-[#24a9c5] hover:underline">entre na sua conta</a> ou <a href="#/signup" className="font-medium text-[#24a9c5] hover:underline">crie uma nova</a>.
+                    </p>
+                </div>
+            </main>
+        );
     }
     
     return (

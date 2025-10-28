@@ -303,3 +303,31 @@ export const sliceAudio = (file: File, startTime: number, endTime: number): Prom
         reader.readAsArrayBuffer(file);
     });
 };
+
+const languageNameMap: { [key: string]: string } = {
+    'portuguese': 'Português',
+    'english': 'Inglês',
+    'spanish': 'Espanhol',
+    'french': 'Francês',
+    'german': 'Alemão',
+    'italian': 'Italiano',
+    'dutch': 'Holandês',
+    'russian': 'Russo',
+    'chinese': 'Chinês',
+    'japanese': 'Japonês',
+    'korean': 'Coreano',
+    'arabic': 'Árabe',
+    'indeterminate': 'Indeterminado',
+};
+
+export const translateLanguageName = (englishNames: string | null): string => {
+    if (!englishNames) return 'N/A';
+
+    const originalNames = englishNames.split(',').map(name => name.trim());
+    const translatedNames = originalNames.map(name => {
+        const lowerName = name.toLowerCase();
+        return languageNameMap[lowerName] || name; // Fallback to the original name if not in the map
+    });
+
+    return translatedNames.join(', ');
+};

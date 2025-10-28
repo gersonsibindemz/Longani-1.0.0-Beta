@@ -1,3 +1,5 @@
+
+
 // FIX: Replaced deprecated `GenerateContentRequest` with `GenerateContentParameters`.
 import { GoogleGenAI, GenerateContentParameters } from "@google/genai";
 
@@ -7,7 +9,7 @@ if (!process.env.API_KEY) {
 
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-export type RefineContentType = 'meeting' | 'sermon' | 'interview' | 'lecture' | 'note' | 'team-meeting';
+export type RefineContentType = 'meeting' | 'sermon' | 'interview' | 'lecture' | 'note';
 export type RefineOutputFormat = 'report' | 'article' | 'key-points' | 'action-items' | 'meeting-report';
 export type PreferredLanguage = 'pt' | 'en';
 
@@ -37,10 +39,11 @@ async function* generateStream(request: GenerateContentParameters): AsyncGenerat
 
 
 const transcribePrompt = `
-As a state-of-the-art speech recognition model, your primary task is a literal audio transcription. Auto-detect the spoken language (likely Mozambican Portuguese).
+As a state-of-the-art speech recognition model, your primary task is a literal audio transcription. Auto-detect the spoken language(s).
 
 **Core Rules:**
-- Transcribe every utterance exactly as spoken. This includes filler words ("uhm," "ah," "tipo"), stutters, repetitions, and grammatical mistakes.
+- Transcribe every utterance exactly as spoken, preserving the original language(s) used. This includes filler words ("uhm," "ah," "tipo"), stutters, repetitions, and grammatical mistakes.
+- If multiple languages are spoken, transcribe them as they appear without translating.
 - Do not summarize, rephrase, correct grammar, or censor any content. Your output must be a pure, unfiltered representation of the audio.
 - Use punctuation like commas, periods, hyphens (-), and ellipses (...) to accurately reflect speech patterns, pauses, and hesitations.
 - Create short paragraphs for natural breaks in thought or when a different speaker might be talking (if discernible).
@@ -49,22 +52,32 @@ As a state-of-the-art speech recognition model, your primary task is a literal a
 - The final output must be only the raw transcript text. Do not add any commentary or introductory phrases.
 `;
 
-const cleanPromptTemplate = (rawTranscript: string) => `
-You are an expert editor specializing in transforming raw, verbatim transcripts into professionally structured and readable documents. Your task is to convert the raw transcript below into a clean, well-formatted HTML document.
+const cleanPromptTemplate = (rawTranscript: string, detectedLanguages: string, targetLanguageName: string) => {
+    const isTranslationNeeded = !detectedLanguages.toLowerCase().split(',').map(l => l.trim()).includes(targetLanguageName.toLowerCase());
 
-**Raw Transcript:**
+    let prompt = `You are an expert editor specializing in transforming raw, verbatim transcripts into professionally structured and readable documents. Your task is to convert the raw transcript below into a clean, well-formatted HTML document.
+
+**Raw Transcript (spoken in ${detectedLanguages}):**
 ---
 ${rawTranscript}
 ---
 
 **Instructions:**
-1.  **Crucial Language Rule:** The input transcript is in Portuguese. Your entire output **MUST** also be in Portuguese. Do not translate any part of the text to another language.
+1.  **Crucial Language Rule:** Your entire output **MUST** be in ${targetLanguageName}.`;
+
+    if (isTranslationNeeded) {
+        prompt += ` This involves **translating** the content from ${detectedLanguages} to ${targetLanguageName}. The translation must be natural and fluent, preserving the original meaning, tone, and intent. Avoid literal, word-for-word translation.`;
+    }
+
+    prompt += `
 2.  **Analyze and Structure:** Identify the main topics, arguments, and logical flow of the conversation. Create a clear structure using appropriate HTML headings (\`<h2>\`, \`<h3>\`, \`<h4>\`). DO NOT use \`<h1>\`. The structure should make the content easy to navigate and understand.
 3.  **Format Lists:** Where appropriate, format items into bulleted lists using \`<ul>\` or numbered lists using \`<ol>\`.
-4.  **Refine Content:** Meticulously correct grammar, spelling, and punctuation. Remove filler words (e.g., "uhm," "ah," "tipo"), false starts, and unnecessary repetitions. Rewrite sentences for better clarity and flow, but **you must strictly preserve the original meaning, intent, and voice of the speaker(s)**. Use standard paragraph tags (\`<p>\`).
+4.  **Refine Content:** Meticulously correct grammar, spelling, and punctuation (in ${targetLanguageName}). Remove filler words (e.g., "uhm," "ah," "tipo"), false starts, and unnecessary repetitions. Rewrite sentences for better clarity and flow, but **you must strictly preserve the original meaning, intent, and voice of the speaker(s)**. Use standard paragraph tags (\`<p>\`).
 5.  **Add Emphasis:** Use \`<strong>\` tags to highlight key terms, conclusions, or important statements. Use \`<em>\` for more subtle emphasis where natural.
 6.  **Output Requirements:** Provide ONLY the HTML body content. Do not include \`<html>\`, \`<body>\`, or markdown fences like \`\`\`html\`\`\`. The output must be ready to be injected directly into a webpage.
 `;
+    return prompt;
+};
 
 const translatePromptTemplate = (textToTranslate: string, targetLanguageName: string) => `
 You are an expert linguist and professional translator specializing in Mozambican Portuguese and ${targetLanguageName}. Your translations are celebrated for being not just accurate, but culturally resonant and indistinguishable from content written by a native speaker.
@@ -114,9 +127,6 @@ const getRefinePrompt = (rawTranscript: string, contentType: RefineContentType, 
     case 'meeting':
       prompt += `The transcript is from a business meeting or discussion. Analyze the conversation to identify key topics, decisions, and outcomes. If possible, distinguish between different speakers (e.g., Speaker 1, Speaker 2, or by name if mentioned). `;
       break;
-    case 'team-meeting':
-      prompt += `The transcript is from a team meeting. Analyze the conversation to identify the main summary, key discussion points, and all concrete action items. `;
-      break;
     case 'sermon':
       prompt += `The transcript is from a sermon, speech, or monologue. Identify the main message, supporting points, and any concluding remarks. The tone should be engaging and reflective of a spoken address. `;
       break;
@@ -157,6 +167,36 @@ const getRefinePrompt = (rawTranscript: string, contentType: RefineContentType, 
   return prompt;
 };
 
+export async function detectLanguage(audioBase64: string, audioMimeType: string): Promise<string> {
+    const audioPart = {
+        inlineData: {
+            data: audioBase64,
+            mimeType: audioMimeType,
+        },
+    };
+    const prompt = "Detect the primary spoken language(s) in this audio. List all languages if multiple are present. Respond only with the language names, capitalized and separated by a comma and space if more than one (e.g., 'Portuguese', or 'Portuguese, English'). Do not add any other text.";
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: { parts: [audioPart, { text: prompt }] },
+            config: {
+                temperature: 0,
+                thinkingConfig: { thinkingBudget: 0 }
+            }
+        });
+        
+        const language = response.text.trim();
+        if (!language) {
+            return "Indeterminado";
+        }
+        return language;
+    } catch (error) {
+        console.error("Error during language detection:", error);
+        throw new Error("Failed to detect language.");
+    }
+}
+
 export function transcribeAudio(audioBase64: string, audioMimeType: string): AsyncGenerator<string> {
     const audioPart = {
         inlineData: {
@@ -178,13 +218,13 @@ export function transcribeAudio(audioBase64: string, audioMimeType: string): Asy
     return generateStream(request);
 };
 
-export function cleanTranscript(rawTranscript: string): AsyncGenerator<string> {
+export function cleanTranscript(rawTranscript: string, detectedLanguages: string, targetLanguageName: string): AsyncGenerator<string> {
     if (!rawTranscript.trim()) {
         // Return an empty generator instead of just returning
         return (async function*() {})();
     }
 
-    const prompt = cleanPromptTemplate(rawTranscript);
+    const prompt = cleanPromptTemplate(rawTranscript, detectedLanguages, targetLanguageName);
     // FIX: The `contents` property should be a single `Content` object for a single-turn request, not an array containing one.
     const request: GenerateContentParameters = {
         model: 'gemini-2.5-flash',

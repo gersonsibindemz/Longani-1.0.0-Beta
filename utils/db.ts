@@ -1,3 +1,4 @@
+
 const DB_NAME = 'LonganiDB';
 const DB_VERSION = 7; // Incremented DB version for teams feature
 const STORE_NAME_TRANSCRIPTIONS = 'transcriptions';
@@ -36,6 +37,7 @@ export interface Transcription {
   refinedOutputFormat?: string;
   teamId?: string;
   sharedBy?: string;
+  originalLanguage?: string;
 }
 
 export interface AudioRecording {

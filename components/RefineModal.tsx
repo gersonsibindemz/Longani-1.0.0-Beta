@@ -11,7 +11,6 @@ interface RefineModalProps {
 }
 
 const contentTypes: { id: RefineContentType; label: string }[] = [
-  { id: 'team-meeting', label: 'Reunião da Equipa' },
   { id: 'meeting', label: 'Reunião / Discussão' },
   { id: 'sermon', label: 'Sermão / Discurso' },
   { id: 'interview', label: 'Entrevista' },
@@ -28,7 +27,7 @@ const outputFormats: { id: RefineOutputFormat; label: string; description: strin
 ];
 
 export const RefineModal: React.FC<RefineModalProps> = ({ isOpen, onClose, onSubmit, isRefining }) => {
-  const [contentType, setContentType] = useState<RefineContentType>('team-meeting');
+  const [contentType, setContentType] = useState<RefineContentType>('meeting');
   const [outputFormat, setOutputFormat] = useState<RefineOutputFormat>('meeting-report');
 
   if (!isOpen) return null;
