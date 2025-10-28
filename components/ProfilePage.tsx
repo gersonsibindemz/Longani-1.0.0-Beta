@@ -1,25 +1,35 @@
-import React, { useState, useRef } from 'react';
-import { CameraIcon, UserIcon } from './Icons';
+import React, { useState, useRef, useEffect } from 'react';
+import { CameraIcon, UserIcon, InfoIcon } from './Icons';
 import { Loader } from './Loader';
-// FIX: Imported the User type from the central database definition to ensure consistency.
-import type { User } from '../utils/db';
+import { useAuth } from '../contexts/AuthContext';
+import { Profile } from '../types';
 
-interface ProfilePageProps {
-  user: User | null;
-  onUpdateProfile: (user: User) => void;
-  onLogout: () => void;
-}
+export const ProfilePage: React.FC = () => {
+  const { user, profile, updateProfile, uploadProfilePhoto, signOut, updateUserEmail } = useAuth();
 
-export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onUpdateProfile, onLogout }) => {
-  const [name, setName] = useState(user?.name || '');
-  const [photoPreview, setPhotoPreview] = useState(user?.photo || null);
+  const [name, setName] = useState(profile?.name || '');
+  const [email, setEmail] = useState(user?.email || '');
+  const [photoFile, setPhotoFile] = useState<File | null>(null);
+  const [photoPreview, setPhotoPreview] = useState(profile?.photo_url || null);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  if (!user) {
-    window.location.hash = '#/login';
-    return null;
+  useEffect(() => {
+    // Keep local state in sync if the profile from context changes
+    if (profile) {
+      setName(profile.name);
+      setPhotoPreview(profile.photo_url || null);
+    }
+    if (user) {
+        setEmail(user.email || '');
+    }
+  }, [profile, user]);
+
+  if (!profile || !user) {
+    // This should ideally not happen if the page is protected, but as a safeguard:
+    return <div className="flex-grow flex items-center justify-center"><Loader /></div>;
   }
 
   const handlePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -30,6 +40,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onUpdateProfile,
         return;
       }
       setError(null);
+      setPhotoFile(file);
       const reader = new FileReader();
       reader.onloadend = () => {
         setPhotoPreview(reader.result as string);
@@ -38,25 +49,56 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onUpdateProfile,
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim()) {
       setError('O nome não pode estar em branco.');
       return;
     }
     setError(null);
+    setSuccessMessage(null);
     setIsSaving(true);
-    // Simulate save delay
-    setTimeout(() => {
-      // FIX: Spread the existing user object to preserve all properties (like plan, createdAt, etc.) during an update.
-      const updatedUser: User = {
-        ...user,
-        name: name.trim(),
-        photo: photoPreview,
-      };
-      onUpdateProfile(updatedUser);
+
+    try {
+      let photoUrl = profile.photo_url;
+      let emailUpdateMessage = '';
+
+      // 1. Update email if changed
+      if (email.trim() !== user.email) {
+          const { error: emailError } = await updateUserEmail(email.trim());
+          if (emailError) throw emailError;
+          emailUpdateMessage = 'Enviámos um email de confirmação para o seu endereço antigo e novo para concluir a alteração.';
+      }
+
+      // 2. Upload photo if changed
+      if (photoFile) {
+        const newPhotoUrl = await uploadProfilePhoto(photoFile);
+        if (newPhotoUrl) {
+          photoUrl = newPhotoUrl;
+        }
+      }
+
+      // 3. Update profile name and photo URL if they have changed
+      const profileUpdates: Partial<Profile> = {};
+      if (name.trim() !== profile.name) {
+          profileUpdates.name = name.trim();
+      }
+      if (photoUrl !== profile.photo_url) {
+          profileUpdates.photo_url = photoUrl;
+      }
+
+      if (Object.keys(profileUpdates).length > 0) {
+        await updateProfile(profileUpdates);
+      }
+
+      setPhotoFile(null); // Reset file state after successful upload
+      setSuccessMessage(`Perfil atualizado com sucesso! ${emailUpdateMessage}`);
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || 'Não foi possível guardar as alterações.');
+    } finally {
       setIsSaving(false);
-      // Optionally navigate away or show a success message
-    }, 1000);
+    }
   };
 
   return (
@@ -93,6 +135,19 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onUpdateProfile,
             <form onSubmit={(e) => { e.preventDefault(); handleSave(); }}>
                 <div className="space-y-4">
                     <div>
+                        <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                            Email
+                        </label>
+                        <input
+                            id="email"
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            required
+                            className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-[#24a9c5] focus:border-[#24a9c5] sm:text-sm"
+                        />
+                    </div>
+                    <div>
                         <label htmlFor="username" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                             Nome de Utilizador
                         </label>
@@ -108,6 +163,12 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onUpdateProfile,
                 </div>
 
                 {error && <p className="mt-4 text-center text-sm text-red-600 dark:text-red-400">{error}</p>}
+                {successMessage && (
+                    <div className="mt-4 text-center text-sm text-green-800 bg-green-100 p-3 rounded-lg border border-green-200 dark:bg-green-900/50 dark:text-green-300 dark:border-green-800/50 flex items-start gap-2">
+                        <InfoIcon className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                        <span>{successMessage}</span>
+                    </div>
+                )}
                 
                 <div className="mt-6">
                     <button
@@ -122,7 +183,7 @@ export const ProfilePage: React.FC<ProfilePageProps> = ({ user, onUpdateProfile,
 
              <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700 text-center">
                 <button
-                    onClick={onLogout}
+                    onClick={signOut}
                     className="text-sm font-medium text-red-600 dark:text-red-500 hover:underline"
                 >
                     Sair da Conta

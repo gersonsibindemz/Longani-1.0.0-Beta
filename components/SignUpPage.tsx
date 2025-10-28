@@ -1,13 +1,10 @@
-
 import React, { useState } from 'react';
 import { Loader } from './Loader';
 import { longaniLogoUrl } from './Header';
+import { useAuth } from '../contexts/AuthContext';
 
-interface SignUpPageProps {
-  onSignUpSuccess: (username: string, email: string) => void;
-}
-
-export const SignUpPage: React.FC<SignUpPageProps> = ({ onSignUpSuccess }) => {
+export const SignUpPage: React.FC = () => {
+  const { signUp } = useAuth();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -15,7 +12,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onSignUpSuccess }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSignUp = (e: React.FormEvent) => {
+  const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -36,16 +33,22 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onSignUpSuccess }) => {
 
     setIsLoading(true);
 
-    // Mock sign-up for testing purposes
-    setTimeout(() => {
-      // Simulate a successful sign-up and log the user in
-      onSignUpSuccess(username, email.toLowerCase());
-    }, 1000);
+    const { error: signUpError } = await signUp(email, password, username);
+
+    if (signUpError) {
+        if (signUpError.message.includes('User already registered')) {
+            setError('Este email já está registado. Tente fazer login.');
+        } else {
+            setError(signUpError.message);
+        }
+        setIsLoading(false);
+    } 
+    // On success, the AuthProvider sets isAwaitingConfirmation and the app will redirect via the hook effect.
   };
   
   const handleNavClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
-    const targetUrl = new URL(event.currentTarget.href);
+    const targetUrl = new URL(event.currentTarget.href, window.location.origin);
     window.location.hash = targetUrl.hash;
   };
 
@@ -65,7 +68,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onSignUpSuccess }) => {
                   id="username"
                   name="username"
                   type="text"
-                  autoComplete="username"
+                  autoComplete="name"
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}

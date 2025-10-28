@@ -1,6 +1,4 @@
-
-
-// FIX: Replaced deprecated `GenerateContentRequest` with `GenerateContentParameters`.
+// Replaced deprecated `GenerateContentRequest` with `GenerateContentParameters`.
 import { GoogleGenAI, GenerateContentParameters } from "@google/genai";
 
 if (!process.env.API_KEY) {
@@ -19,7 +17,7 @@ export type PreferredLanguage = 'pt' | 'en';
  * @param request The complete request object for the `generateContentStream` API call.
  * @returns An async generator that yields the text chunks from the response.
  */
-// FIX: Replaced deprecated `GenerateContentRequest` with `GenerateContentParameters`.
+// Replaced deprecated `GenerateContentRequest` with `GenerateContentParameters`.
 async function* generateStream(request: GenerateContentParameters): AsyncGenerator<string> {
     try {
         const responseStream = await ai.models.generateContentStream(request);
@@ -205,7 +203,6 @@ export function transcribeAudio(audioBase64: string, audioMimeType: string): Asy
         },
     };
 
-    // FIX: The `contents` property should be a single `Content` object for a single-turn request, not an array containing one.
     const request: GenerateContentParameters = {
         model: 'gemini-2.5-flash',
         contents: { parts: [audioPart, { text: transcribePrompt }] },
@@ -225,7 +222,6 @@ export function cleanTranscript(rawTranscript: string, detectedLanguages: string
     }
 
     const prompt = cleanPromptTemplate(rawTranscript, detectedLanguages, targetLanguageName);
-    // FIX: The `contents` property should be a single `Content` object for a single-turn request, not an array containing one.
     const request: GenerateContentParameters = {
         model: 'gemini-2.5-flash',
         contents: { parts: [{ text: prompt }] },
@@ -245,7 +241,6 @@ export function translateText(textToTranslate: string, targetLanguage: 'en'): As
     const targetLanguageName = 'English';
     const prompt = translatePromptTemplate(textToTranslate, targetLanguageName);
 
-    // FIX: The `contents` property should be a single `Content` object for a single-turn request, not an array containing one.
     const request: GenerateContentParameters = {
         model: 'gemini-2.5-flash',
         contents: { parts: [{ text: prompt }] },
@@ -264,7 +259,6 @@ export function refineTranscript(rawTranscript: string, contentType: RefineConte
 
   const prompt = getRefinePrompt(rawTranscript, contentType, outputFormat, targetLanguage);
   
-  // FIX: The `contents` property should be a single `Content` object for a single-turn request, not an array containing one.
   const request: GenerateContentParameters = {
       model: 'gemini-2.5-flash',
       contents: { parts: [{ text: prompt }] },

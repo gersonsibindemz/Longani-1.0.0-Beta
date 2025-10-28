@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { SunIcon, MoonIcon } from './Icons';
-import type { Theme } from '../App';
+import type { Theme } from '../types';
 
 interface ThemeSwitcherProps {
   setTheme: (theme: Theme) => void;

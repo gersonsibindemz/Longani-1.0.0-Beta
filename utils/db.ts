@@ -1,680 +1,202 @@
-const DB_NAME = 'LonganiDB';
-const DB_VERSION = 7; // Incremented DB version for teams feature
-const STORE_NAME_TRANSCRIPTIONS = 'transcriptions';
-const STORE_NAME_AUDIO = 'audioFiles';
-// FIX: Corrected typo in constant name from STORE_NAME_SAVED_TRANSLations to STORE_NAME_SAVED_TRANSLATIONS.
-const STORE_NAME_SAVED_TRANSLATIONS = 'savedTranslations';
-const STORE_NAME_FOLDERS = 'folders'; // New store for folders
-const STORE_NAME_TEAMS = 'teams'; // New store for teams
-
-export type Plan = 'básico' | 'ideal' | 'premium' | 'trial';
-
-export interface User {
-  id: string; // email
-  name: string;
-  photo?: string | null;
-  teamId?: string;
-  status: 'pending' | 'active';
-  plan?: Plan;
-  createdAt?: number;
-}
-
-export interface Team {
-    id: string;
-    name: string;
-    ownerId: string;
-    members: User[];
-}
-
-export interface Transcription {
-  id: string;
-  filename: string;
-  date: number;
-  rawTranscript: string;
-  cleanedTranscript: string;
-  audioId?: string;
-  duration?: number;
-  isFavorite?: boolean;
-  tags?: string[]; // For tagging functionality
-  folderId?: string; // For folder organization
-  refinedTranscript?: string;
-  refinedContentType?: string;
-  refinedOutputFormat?: string;
-  teamId?: string;
-  sharedBy?: string;
-  originalLanguage?: string;
-}
-
-export interface AudioRecording {
-  id: string;
-  name: string;
-  date: number;
-  type: 'upload' | 'recording';
-  audioBlob: Blob;
-  isFavorite?: boolean;
-  tags?: string[]; // For tagging functionality
-}
-
-export interface SavedTranslation {
-  id: string;
-  transcriptionId: string;
-  originalFilename: string;
-  date: number;
-  targetLanguage: 'en' | string;
-  translatedText: string;
-  isFavorite?: boolean;
-}
-
-export interface Folder {
-    id: string;
-    name: string;
-    date: number;
-}
-
-let db: IDBDatabase;
-
-export function initDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    if (db) {
-      return resolve(db);
-    }
-
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-
-    request.onerror = () => {
-      console.error('Database error:', request.error);
-      reject('Error opening database');
-    };
-
-    request.onsuccess = () => {
-      db = request.result;
-      resolve(db);
-    };
-
-    request.onupgradeneeded = (event) => {
-      const dbInstance = (event.target as IDBOpenDBRequest).result;
-      
-      if (event.oldVersion < 1) {
-        if (!dbInstance.objectStoreNames.contains(STORE_NAME_TRANSCRIPTIONS)) {
-          const transcriptionsStore = dbInstance.createObjectStore(STORE_NAME_TRANSCRIPTIONS, { keyPath: 'id' });
-          transcriptionsStore.createIndex('date', 'date', { unique: false });
-        }
-      }
-
-      if (event.oldVersion < 2) {
-        if (!dbInstance.objectStoreNames.contains(STORE_NAME_AUDIO)) {
-          const audioStore = dbInstance.createObjectStore(STORE_NAME_AUDIO, { keyPath: 'id' });
-          audioStore.createIndex('date', 'date', { unique: false });
-          audioStore.createIndex('type', 'type', { unique: false });
-        }
-      }
-      
-      if (event.oldVersion < 3) {
-        const transcriptionsStore = (event.target as IDBOpenDBRequest).transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
-        if (!transcriptionsStore.indexNames.contains('audioId')) {
-            transcriptionsStore.createIndex('audioId', 'audioId', { unique: false });
-        }
-        if (!transcriptionsStore.indexNames.contains('isFavorite')) {
-            transcriptionsStore.createIndex('isFavorite', 'isFavorite', { unique: false });
-        }
-        const audioStore = (event.target as IDBOpenDBRequest).transaction.objectStore(STORE_NAME_AUDIO);
-        if (!audioStore.indexNames.contains('isFavorite')) {
-            audioStore.createIndex('isFavorite', 'isFavorite', { unique: false });
-        }
-      }
-
-      if (event.oldVersion < 4) {
-        if (!dbInstance.objectStoreNames.contains(STORE_NAME_SAVED_TRANSLATIONS)) {
-            const translationsStore = dbInstance.createObjectStore(STORE_NAME_SAVED_TRANSLATIONS, { keyPath: 'id' });
-            translationsStore.createIndex('date', 'date', { unique: false });
-            translationsStore.createIndex('transcriptionId', 'transcriptionId', { unique: false });
-            translationsStore.createIndex('isFavorite', 'isFavorite', { unique: false });
-        }
-      }
-
-      // Migration for Version 5 (Folders and Tags feature)
-      if (event.oldVersion < 5) {
-        const transcriptionsStore = (event.target as IDBOpenDBRequest).transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
-        if (!transcriptionsStore.indexNames.contains('tags')) {
-            transcriptionsStore.createIndex('tags', 'tags', { unique: false, multiEntry: true });
-        }
-        if (!transcriptionsStore.indexNames.contains('folderId')) {
-            transcriptionsStore.createIndex('folderId', 'folderId', { unique: false });
-        }
-        if (!dbInstance.objectStoreNames.contains(STORE_NAME_FOLDERS)) {
-            const foldersStore = dbInstance.createObjectStore(STORE_NAME_FOLDERS, { keyPath: 'id' });
-            foldersStore.createIndex('name', 'name', { unique: false });
-        }
-        // Also add tags to the audio files store for consistency
-        const audioStore = (event.target as IDBOpenDBRequest).transaction.objectStore(STORE_NAME_AUDIO);
-        if (!audioStore.indexNames.contains('tags')) {
-            audioStore.createIndex('tags', 'tags', { unique: false, multiEntry: true });
-        }
-      }
-      
-      if (event.oldVersion < 6) {
-        const transcriptionsStore = (event.target as IDBOpenDBRequest).transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
-        if (!transcriptionsStore.indexNames.contains('isShared')) {
-            transcriptionsStore.createIndex('isShared', 'isShared', { unique: false });
-        }
-      }
-
-      if (event.oldVersion < 7) {
-        if (!dbInstance.objectStoreNames.contains(STORE_NAME_TEAMS)) {
-            dbInstance.createObjectStore(STORE_NAME_TEAMS, { keyPath: 'id' });
-        }
-        const transaction = (event.target as IDBOpenDBRequest).transaction;
-        if (transaction) {
-            const transcriptionsStore = transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
-            if (transcriptionsStore.indexNames.contains('isShared')) {
-                transcriptionsStore.deleteIndex('isShared');
-            }
-            if (!transcriptionsStore.indexNames.contains('teamId')) {
-                transcriptionsStore.createIndex('teamId', 'teamId', { unique: false });
-            }
-        }
-      }
-    };
-  });
-}
+import { supabase } from '../services/supabaseClient';
+import type { Transcription, AudioRecording, Translation, AudioFile, Team, Profile, TeamWithMembers } from '../types';
+import { getAudioDuration } from './audioUtils';
 
 // --- Transcription Functions ---
 
-export function addTranscription(transcription: Transcription): Promise<void> {
-  return new Promise(async (resolve, reject) => {
-    try {
-        const db = await initDB();
-        const transaction = db.transaction(STORE_NAME_TRANSCRIPTIONS, 'readwrite');
-        const store = transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
-        const request = store.add(transcription);
+export const addTranscription = async (transcription: Partial<Transcription>): Promise<Transcription> => {
+    const { data, error } = await supabase
+        .from('transcriptions')
+        .insert(transcription as any)
+        .select()
+        .single();
+    if (error) throw error;
+    return data;
+};
 
-        request.onsuccess = () => resolve();
-        request.onerror = () => {
-            console.error('Error adding transcription:', request.error);
-            reject('Could not add transcription to the database.');
-        };
-    } catch (error) {
-        reject(error);
+export const getAllTranscriptions = async (): Promise<Transcription[]> => {
+    const { data, error } = await supabase
+        .from('transcriptions')
+        .select('*')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+};
+
+export const getTranscriptionById = async (id: string): Promise<Transcription | null> => {
+    const { data, error } = await supabase
+        .from('transcriptions')
+        .select('*')
+        .eq('id', id)
+        .single();
+    if (error) {
+        if (error.code === 'PGRST116') return null; // Not found
+        throw error;
     }
-  });
-}
+    return data;
+};
 
-export function getTranscriptionById(id: string): Promise<Transcription | undefined> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const db = await initDB();
-        const transaction = db.transaction(STORE_NAME_TRANSCRIPTIONS, 'readonly');
-        const store = transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
-        const request = store.get(id);
-  
-        request.onsuccess = () => {
-          resolve(request.result);
-        };
-        request.onerror = () => {
-          console.error('Error getting transcription by ID:', request.error);
-          reject('Could not retrieve the transcription.');
-        };
-      } catch (error) {
-        reject(error);
-      }
-    });
-}
+export const updateTranscription = async (id: string, updates: Partial<Transcription>): Promise<void> => {
+    const { error } = await supabase
+        .from('transcriptions')
+        .update(updates)
+        .eq('id', id);
+    if (error) throw error;
+};
 
-export function getAllTranscriptions(): Promise<Transcription[]> {
-  return new Promise(async (resolve, reject) => {
-    try {
-        const db = await initDB();
-        const transaction = db.transaction(STORE_NAME_TRANSCRIPTIONS, 'readonly');
-        const store = transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
-        const request = store.getAll();
+export const deleteTranscription = async (id: string): Promise<void> => {
+    const transcription = await getTranscriptionById(id);
+    if (!transcription) return;
 
-        request.onsuccess = () => {
-            const sorted = request.result.sort((a, b) => b.date - a.date);
-            resolve(sorted);
-        };
-        request.onerror = () => {
-            console.error('Error getting all transcriptions:', request.error);
-            reject('Could not retrieve transcriptions.');
-        };
-    } catch (error) {
-        reject(error);
+    const { error: deleteError } = await supabase
+        .from('transcriptions')
+        .delete()
+        .eq('id', id);
+    if (deleteError) throw deleteError;
+
+    if (transcription.audio_id) {
+        await deleteAudioFile(transcription.audio_id);
     }
-  });
-}
-
-export function deleteTranscription(id: string): Promise<void> {
-  return new Promise(async (resolve, reject) => {
-    try {
-        const db = await initDB();
-        const transaction = db.transaction(STORE_NAME_TRANSCRIPTIONS, 'readwrite');
-        const store = transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
-        const request = store.delete(id);
-
-        request.onsuccess = () => resolve();
-        request.onerror = () => {
-        console.error('Error deleting transcription:', request.error);
-        reject('Could not delete transcription.');
-        };
-    } catch (error) {
-        reject(error);
-    }
-  });
-}
+};
 
 // --- Audio File Functions ---
 
-export function addAudioFile(audio: AudioRecording): Promise<void> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const db = await initDB();
-      const transaction = db.transaction(STORE_NAME_AUDIO, 'readwrite');
-      const store = transaction.objectStore(STORE_NAME_AUDIO);
-      const request = store.add(audio);
+export const addAudioFile = async (audio: { name: string; audioBlob: Blob }, userId: string): Promise<AudioFile> => {
+    const file = new File([audio.audioBlob], audio.name, { type: audio.audioBlob.type });
+    const storagePath = `${userId}/${Date.now()}-${file.name}`;
 
-      request.onsuccess = () => resolve();
-      request.onerror = () => {
-        console.error('Error adding audio file:', request.error);
-        reject('Could not add audio file to the database.');
-      };
-    } catch (error) {
-      reject(error);
-    }
-  });
+    const { error: uploadError } = await supabase.storage
+        .from('audio_files')
+        .upload(storagePath, file);
+    if (uploadError) throw uploadError;
+
+    const duration = await getAudioDuration(file);
+    const newAudioFile: Partial<AudioFile> = {
+        user_id: userId,
+        name: file.name,
+        storage_path: storagePath,
+        duration_seconds: duration,
+        file_size_bytes: file.size,
+    };
+
+    const { data, error: insertError } = await supabase
+        .from('audio_files')
+        .insert(newAudioFile as any)
+        .select()
+        .single();
+    if (insertError) throw insertError;
+    return data;
+};
+
+export const getAllAudioFiles = async (): Promise<AudioFile[]> => {
+    const { data, error } = await supabase
+        .from('audio_files')
+        .select('*')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+};
+
+export const getAudioFilesForCurrentMonth = async (): Promise<AudioFile[]> => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+    const { data, error } = await supabase
+        .from('audio_files')
+        .select('*')
+        .gte('created_at', startOfMonth);
+
+    if (error) throw error;
+    return data || [];
+};
+
+export const getAudioRecording = async (id: string): Promise<AudioRecording | null> => {
+    const { data: fileData, error } = await supabase.from('audio_files').select('*').eq('id', id).single();
+    if (error || !fileData) return null;
+
+    const { data: blob, error: downloadError } = await supabase.storage.from('audio_files').download(fileData.storage_path);
+    if (downloadError) return null;
+
+    return { id: fileData.id, name: fileData.name, date: new Date(fileData.created_at).getTime(), audioBlob: blob, isFavorite: fileData.is_favorite };
+};
+
+export const updateAudioFile = async (id: string, updates: Partial<AudioFile>): Promise<void> => {
+    const { error } = await supabase.from('audio_files').update(updates).eq('id', id);
+    if (error) throw error;
+};
+
+export const deleteAudioFile = async (id: string): Promise<void> => {
+    const { data: audioFile, error: fetchError } = await supabase.from('audio_files').select('storage_path').eq('id', id).single();
+    if (fetchError || !audioFile) return;
+
+    const { error: storageError } = await supabase.storage.from('audio_files').remove([audioFile.storage_path]);
+    if (storageError) console.error("Failed to delete from storage:", storageError);
+
+    const { error: deleteError } = await supabase.from('audio_files').delete().eq('id', id);
+    if (deleteError) throw deleteError;
+};
+
+// --- Translation Functions ---
+
+export const addTranslation = async (translation: Partial<Translation>): Promise<Translation> => {
+    const { data, error } = await supabase.from('translations').insert(translation as any).select().single();
+    if (error) throw error;
+    return data;
 }
 
-export function getAudioFile(id: string): Promise<AudioRecording | undefined> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const db = await initDB();
-        const transaction = db.transaction(STORE_NAME_AUDIO, 'readonly');
-        const store = transaction.objectStore(STORE_NAME_AUDIO);
-        const request = store.get(id);
-  
-        request.onsuccess = () => {
-          resolve(request.result);
-        };
-        request.onerror = () => {
-          console.error('Error getting audio file:', request.error);
-          reject('Could not retrieve the audio file.');
-        };
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
+export const getAllSavedTranslations = async (): Promise<Translation[]> => {
+    const { data, error } = await supabase
+        .from('translations')
+        .select('*')
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+};
 
-export function getAllAudioFiles(): Promise<AudioRecording[]> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const db = await initDB();
-      const transaction = db.transaction(STORE_NAME_AUDIO, 'readonly');
-      const store = transaction.objectStore(STORE_NAME_AUDIO);
-      const request = store.getAll();
-
-      request.onsuccess = () => {
-        const sorted = request.result.sort((a, b) => b.date - a.date);
-        resolve(sorted);
-      };
-      request.onerror = () => {
-        console.error('Error getting all audio files:', request.error);
-        reject('Could not retrieve audio files.');
-      };
-    } catch (error) {
-      reject(error);
-    }
-  });
-}
-
-export function deleteAudioFile(id: string): Promise<void> {
-  return new Promise(async (resolve, reject) => {
-    try {
-      const db = await initDB();
-      const transaction = db.transaction(STORE_NAME_AUDIO, 'readwrite');
-      const store = transaction.objectStore(STORE_NAME_AUDIO);
-      const request = store.delete(id);
-
-      request.onsuccess = () => resolve();
-      request.onerror = () => {
-        console.error('Error deleting audio file:', request.error);
-        reject('Could not delete audio file.');
-      };
-    } catch (error) {
-      reject(error);
-    }
-  });
+export const deleteTranslation = async (id: string): Promise<void> => {
+    const { error } = await supabase.from('translations').delete().eq('id', id);
+    if (error) throw error;
 }
 
 // --- Team Functions ---
-export function addTeam(team: Team): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = await initDB();
-            const transaction = db.transaction(STORE_NAME_TEAMS, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME_TEAMS);
-            const request = store.add(team);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject('Could not add team.');
-        } catch (error) {
-            reject(error);
-        }
+
+export const createTeam = async (name: string, ownerId: string): Promise<Team> => {
+    const { data, error } = await supabase.from('teams').insert({ name, owner_id: ownerId }).select().single();
+    if (error) throw error;
+    return data;
+};
+
+export const getUserTeam = async (userId: string): Promise<TeamWithMembers | null> => {
+    const { data: profile } = await supabase.from('profiles').select('team_id').eq('id', userId).single();
+    if (!profile?.team_id) return null;
+
+    const { data: team, error: teamError } = await supabase.from('teams').select('*').eq('id', profile.team_id).single();
+    if (teamError || !team) return null;
+
+    const { data: members, error: membersError } = await supabase.from('profiles').select('*').eq('team_id', team.id);
+    if (membersError) throw membersError;
+
+    return { ...team, members: members || [] };
+};
+
+export const updateProfileTeamId = async (userId: string, teamId: string | null): Promise<void> => {
+    const { error } = await supabase.from('profiles').update({ team_id: teamId }).eq('id', userId);
+    if (error) throw error;
+};
+
+export const inviteUserToTeam = async (email: string, teamId: string): Promise<{ success: boolean; message: string }> => {
+    // This is the secure way to handle invitations. It calls a server-side function
+    // in Supabase that can bypass RLS to find a user by email and update their team_id.
+    // You must create this function in your Supabase SQL editor.
+    const { data, error } = await supabase.rpc('invite_user_to_team', {
+        user_email: email,
+        team_id_to_add: teamId,
     });
-}
 
-export function getTeam(id: string): Promise<Team | undefined> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = await initDB();
-            const transaction = db.transaction(STORE_NAME_TEAMS, 'readonly');
-            const store = transaction.objectStore(STORE_NAME_TEAMS);
-            const request = store.get(id);
-            request.onsuccess = () => resolve(request.result);
-            request.onerror = () => reject('Could not get team.');
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
+    if (error) {
+        console.error("RPC Error:", error);
+        return { success: false, message: error.message };
+    }
 
-export function updateTeam(id: string, updates: Partial<Team>): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = await initDB();
-            const transaction = db.transaction(STORE_NAME_TEAMS, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME_TEAMS);
-            const request = store.get(id);
-            request.onsuccess = () => {
-                const item = request.result;
-                if (item) {
-                    const updatedItem = { ...item, ...updates };
-                    store.put(updatedItem).onsuccess = () => resolve();
-                } else {
-                    reject('Team not found.');
-                }
-            };
-            request.onerror = () => reject('Could not get team to update.');
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-export function deleteTeam(id: string): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = await initDB();
-            const transaction = db.transaction(STORE_NAME_TEAMS, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME_TEAMS);
-            const request = store.delete(id);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject('Could not delete team.');
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-
-// --- Folder Functions ---
-
-export function addFolder(folder: Folder): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = await initDB();
-            const transaction = db.transaction(STORE_NAME_FOLDERS, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME_FOLDERS);
-            store.add(folder).onsuccess = () => resolve();
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-export function getAllFolders(): Promise<Folder[]> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = await initDB();
-            const transaction = db.transaction(STORE_NAME_FOLDERS, 'readonly');
-            const store = transaction.objectStore(STORE_NAME_FOLDERS);
-            const request = store.getAll();
-            request.onsuccess = () => {
-                const sorted = request.result.sort((a, b) => a.name.localeCompare(b.name));
-                resolve(sorted);
-            };
-            request.onerror = () => reject('Could not get folders.');
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-export function updateFolder(id: string, updates: Partial<Folder>): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = await initDB();
-            const transaction = db.transaction(STORE_NAME_FOLDERS, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME_FOLDERS);
-            const request = store.get(id);
-            request.onsuccess = () => {
-                const item = request.result;
-                if (item) {
-                    const updatedItem = { ...item, ...updates };
-                    store.put(updatedItem).onsuccess = () => resolve();
-                } else {
-                    reject('Folder not found.');
-                }
-            };
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-export function deleteFolder(id: string): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = await initDB();
-            const transaction = db.transaction([STORE_NAME_FOLDERS, STORE_NAME_TRANSCRIPTIONS], 'readwrite');
-            const foldersStore = transaction.objectStore(STORE_NAME_FOLDERS);
-            const transcriptionsStore = transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
-            const folderIndex = transcriptionsStore.index('folderId');
-            
-            const getReq = folderIndex.getAll(id);
-            getReq.onsuccess = () => {
-                getReq.result.forEach(t => {
-                    delete t.folderId;
-                    transcriptionsStore.put(t);
-                });
-                foldersStore.delete(id);
-            };
-
-            transaction.oncomplete = () => resolve();
-            transaction.onerror = () => reject('Transaction failed while deleting folder.');
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-// --- Generic Update Functions ---
-
-export function updateTranscription(id: string, updates: Partial<Transcription>): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const db = await initDB();
-        const transaction = db.transaction(STORE_NAME_TRANSCRIPTIONS, 'readwrite');
-        const store = transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
-        const request = store.get(id);
-        request.onsuccess = () => {
-          const item = request.result;
-          if (item) {
-            const updatedItem = { ...item, ...updates };
-            const updateRequest = store.put(updatedItem);
-            updateRequest.onsuccess = () => resolve();
-            updateRequest.onerror = () => reject('Could not update transcription.');
-          } else {
-            reject('Transcription not found.');
-          }
-        };
-        request.onerror = () => reject('Could not get transcription to update.');
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-  
-  export function updateAudioFile(id: string, updates: Partial<AudioRecording>): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const db = await initDB();
-        const transaction = db.transaction(STORE_NAME_AUDIO, 'readwrite');
-        const store = transaction.objectStore(STORE_NAME_AUDIO);
-        const request = store.get(id);
-        request.onsuccess = () => {
-          const item = request.result;
-          if (item) {
-            const updatedItem = { ...item, ...updates };
-            const updateRequest = store.put(updatedItem);
-            updateRequest.onsuccess = () => resolve();
-            updateRequest.onerror = () => reject('Could not update audio file.');
-          } else {
-            reject('Audio file not found.');
-          }
-        };
-        request.onerror = () => reject('Could not get audio file to update.');
-      } catch (error) {
-        reject(error);
-      }
-    });
-  }
-
-// --- Favorites Functions ---
-
-export function updateTranscriptionFavoriteStatus(id: string, isFavorite: boolean): Promise<void> {
-    return updateTranscription(id, { isFavorite });
-}
-  
-export function updateAudioFileFavoriteStatus(id: string, isFavorite: boolean): Promise<void> {
-    return updateAudioFile(id, { isFavorite });
-}
-
-export function getAllFavorites(): Promise<{ transcriptions: Transcription[], audioFiles: AudioRecording[] }> {
-    return new Promise(async (resolve, reject) => {
-      try {
-        const db = await initDB();
-        const transaction = db.transaction([STORE_NAME_TRANSCRIPTIONS, STORE_NAME_AUDIO], 'readonly');
-        
-        const transcriptionsStore = transaction.objectStore(STORE_NAME_TRANSCRIPTIONS);
-        const audioFilesStore = transaction.objectStore(STORE_NAME_AUDIO);
-        
-        const allTranscriptionsRequest = transcriptionsStore.getAll();
-        const allAudioFilesRequest = audioFilesStore.getAll();
-
-        let transcriptions: Transcription[] = [];
-        let audioFiles: AudioRecording[] = [];
-        let completed = 0;
-
-        const checkDone = () => {
-          if (completed === 2) {
-            resolve({ 
-              transcriptions: transcriptions.sort((a, b) => b.date - a.date), 
-              audioFiles: audioFiles.sort((a, b) => b.date - a.date) 
-            });
-          }
-        };
-
-        allTranscriptionsRequest.onsuccess = () => {
-          transcriptions = allTranscriptionsRequest.result.filter(t => t.isFavorite);
-          completed++;
-          checkDone();
-        };
-        allAudioFilesRequest.onsuccess = () => {
-          audioFiles = allAudioFilesRequest.result.filter(a => a.isFavorite);
-          completed++;
-          checkDone();
-        };
-        
-        transaction.onerror = (event) => {
-            console.error('Transaction error fetching favorites:', (event.target as IDBTransaction).error);
-            reject('Transaction failed while fetching favorites.');
-        }
-        
-      } catch (error) {
-        reject(error);
-      }
-    });
-}
-
-// --- Saved Translation Functions ---
-
-export function addSavedTranslation(translation: SavedTranslation): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = await initDB();
-            const transaction = db.transaction(STORE_NAME_SAVED_TRANSLATIONS, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME_SAVED_TRANSLATIONS);
-            const request = store.add(translation);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject('Could not add saved translation.');
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-export function getAllSavedTranslations(): Promise<SavedTranslation[]> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = await initDB();
-            const transaction = db.transaction(STORE_NAME_SAVED_TRANSLATIONS, 'readonly');
-            const store = transaction.objectStore(STORE_NAME_SAVED_TRANSLATIONS);
-            const request = store.getAll();
-            request.onsuccess = () => {
-                const sorted = request.result.sort((a, b) => b.date - a.date);
-                resolve(sorted);
-            };
-            request.onerror = () => reject('Could not retrieve saved translations.');
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-export function updateSavedTranslation(id: string, updates: Partial<SavedTranslation>): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = await initDB();
-            const transaction = db.transaction(STORE_NAME_SAVED_TRANSLATIONS, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME_SAVED_TRANSLATIONS);
-            const request = store.get(id);
-            request.onsuccess = () => {
-                const item = request.result;
-                if (item) {
-                    const updatedItem = { ...item, ...updates };
-                    const updateRequest = store.put(updatedItem);
-                    updateRequest.onsuccess = () => resolve();
-                    updateRequest.onerror = () => reject('Could not update saved translation.');
-                } else {
-                    reject('Saved translation not found.');
-                }
-            };
-            request.onerror = () => reject('Could not get saved translation to update.');
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
-
-export function deleteSavedTranslation(id: string): Promise<void> {
-    return new Promise(async (resolve, reject) => {
-        try {
-            const db = await initDB();
-            const transaction = db.transaction(STORE_NAME_SAVED_TRANSLATIONS, 'readwrite');
-            const store = transaction.objectStore(STORE_NAME_SAVED_TRANSLATIONS);
-            const request = store.delete(id);
-            request.onsuccess = () => resolve();
-            request.onerror = () => reject('Could not delete saved translation.');
-        } catch (error) {
-            reject(error);
-        }
-    });
-}
+    return data; // The RPC function should return { success: boolean, message: string }
+};

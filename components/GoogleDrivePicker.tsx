@@ -5,9 +5,6 @@ import { Loader } from './Loader';
 declare const gapi: any;
 declare const google: any;
 
-// FIX: Augment the Window interface to include properties for Google APIs.
-// This informs TypeScript that `window.gapi` and `window.google` can exist,
-// resolving errors when checking for these dynamically loaded scripts.
 declare global {
     interface Window {
       gapi: any;
@@ -15,7 +12,7 @@ declare global {
     }
 }
 
-const GOOGLE_API_KEY = 'AIzaSyBhSL2phgNW-jugmAz3svI7dEgnrlx1rRc';
+const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 
@@ -25,14 +22,8 @@ interface GoogleDrivePickerProps {
 
 type PickerStatus = 'loading' | 'ready' | 'error';
 
-/**
- * Dynamically loads the necessary Google API and Identity Services scripts.
- * Uses the official `onload` callback mechanism for robust loading.
- * @returns A promise that resolves when both scripts are loaded.
- */
 const loadGoogleApiScripts = (): Promise<void> => {
     return new Promise((resolve, reject) => {
-      // Check if scripts are already loaded and ready
       if (window.gapi && window.google?.accounts?.oauth2) {
         return resolve();
       }
@@ -42,14 +33,12 @@ const loadGoogleApiScripts = (): Promise<void> => {
   
       const checkCompletion = () => {
         if (gapiLoaded && gisLoaded) {
-          // Clean up global callbacks to prevent memory leaks
           if ((window as any).gapiLoaded) delete (window as any).gapiLoaded;
           if ((window as any).gisLoaded) delete (window as any).gisLoaded;
           resolve();
         }
       };
       
-      // Assign callbacks to the window object so the scripts can call them
       (window as any).gapiLoaded = () => {
         gapiLoaded = true;
         checkCompletion();
@@ -59,10 +48,8 @@ const loadGoogleApiScripts = (): Promise<void> => {
         checkCompletion();
       };
   
-      // Function to append a script tag to the body if it doesn't already exist
       const appendScript = (id: string, src: string, onloadCallbackName: string) => {
           if (document.getElementById(id)) {
-              // If script tag exists, check if the library is loaded and trigger callback
               if (id === 'gapi-script' && window.gapi) (window as any).gapiLoaded();
               if (id === 'gis-script' && window.google?.accounts) (window as any).gisLoaded();
               return;
@@ -127,7 +114,7 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onFileImpo
     useEffect(() => {
         const initialize = async () => {
             if (!GOOGLE_API_KEY || !GOOGLE_CLIENT_ID) {
-                setError('A funcionalidade do Google Drive não está configurada. As chaves de API precisam ser definidas no ambiente.');
+                setError('A funcionalidade do Google Drive não está configurada.');
                 setStatus('error');
                 return;
             }
@@ -135,7 +122,6 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onFileImpo
             try {
                 await loadGoogleApiScripts();
                 
-                // GAPI client and Picker need to be loaded, and the OAuth client needs to be initialized.
                 await new Promise<void>((resolve, reject) => {
                     gapi.load('client:picker', () => {
                         gapi.client.init({

@@ -12,7 +12,7 @@ interface SubmenuOption {
 // `onClick` is also optional to allow parent items to act only as triggers.
 interface DropdownOption {
   label: string;
-  icon: React.ReactNode;
+  icon?: React.ReactNode;
   onClick?: () => void;
   className?: string;
   submenu?: SubmenuOption[];

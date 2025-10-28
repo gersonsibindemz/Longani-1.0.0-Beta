@@ -1,402 +1,130 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { 
-    getAllFavorites, 
-    getAllTranscriptions,
-    deleteTranscription, 
-    updateTranscription, 
-    deleteAudioFile,
-    updateAudioFile,
-    Transcription, 
-    AudioRecording
-} from '../utils/db';
+import React, { useState, useEffect, useCallback } from 'react';
+import { getAllTranscriptions, getAllAudioFiles, updateTranscription, updateAudioFile, getAudioRecording } from '../utils/db';
+import { Transcription, AudioFile, AudioRecording } from '../types';
 import { Loader } from './Loader';
-import { TrashIcon, SparkleIcon, PlayIcon, StarIcon, MoreVerticalIcon, EditIcon, InfoIcon } from './Icons';
-import { longaniLogoUrl } from './Header';
-import { ConfirmationModal } from './ConfirmationModal';
-import { DropdownMenu } from './DropdownMenu';
-import { PropertiesModal } from './PropertiesModal';
+// FIX: Added missing 'StarOutlineIcon' import.
+import { StarIcon, HistoryIcon, WaveformIcon, PlayIcon, StarOutlineIcon } from './Icons';
 
-type FavoriteFilter = 'all' | 'transcriptions' | 'recordings';
+type FavoriteItem = (Transcription & { type: 'transcription' }) | (AudioFile & { type: 'audio' });
 
-interface FavoritesPageProps {
-  onTranscribe: (audio: AudioRecording) => void;
-  onPlayAudio: (audio: AudioRecording) => void;
-}
+export const FavoritesPage: React.FC<{ onTranscribe: (audio: AudioRecording) => void, onPlayAudio: (audio: AudioRecording) => void }> = ({ onTranscribe, onPlayAudio }) => {
+    const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [filter, setFilter] = useState<'all' | 'transcription' | 'audio'>('all');
 
-const FavoriteTranscriptionItem: React.FC<{
-  transcript: Transcription;
-  onDelete: () => void;
-  onSetFavorite: (isFavorite: boolean) => void;
-  onRename: (id: string, newName: string) => void;
-  onShowProperties: () => void;
-}> = ({ transcript, onDelete, onSetFavorite, onRename, onShowProperties }) => {
-    const [isRenaming, setIsRenaming] = useState(false);
-    const [newName, setNewName] = useState(transcript.filename);
-    const inputRef = useRef<HTMLInputElement>(null);
+    const fetchData = useCallback(async () => {
+        setIsLoading(true);
+        setError(null);
+        try {
+            const [transcriptions, audioFiles] = await Promise.all([
+                getAllTranscriptions(),
+                getAllAudioFiles(),
+            ]);
+
+            const favTranscriptions = transcriptions.filter(t => t.is_favorite).map(t => ({ ...t, type: 'transcription' as const }));
+            const favAudio = audioFiles.filter(a => a.is_favorite).map(a => ({ ...a, type: 'audio' as const }));
+
+            const allFavorites = [...favTranscriptions, ...favAudio];
+            allFavorites.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+            
+            setFavorites(allFavorites);
+        } catch (err) {
+            setError('Não foi possível carregar os favoritos.');
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
 
     useEffect(() => {
-        if (isRenaming) {
-            inputRef.current?.focus();
-            inputRef.current?.select();
-        }
-    }, [isRenaming]);
-
-    const handleRenameConfirm = () => {
-        if (newName.trim() && newName.trim() !== transcript.filename) {
-            onRename(transcript.id, newName.trim());
-        }
-        setIsRenaming(false);
-    };
-
-    const handleRenameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') handleRenameConfirm();
-        if (e.key === 'Escape') {
-            setNewName(transcript.filename);
-            setIsRenaming(false);
-        }
-    };
+        fetchData();
+    }, [fetchData]);
     
-    const dropdownOptions = [
-        { label: 'Renomear', icon: <EditIcon className="w-4 h-4" />, onClick: () => setIsRenaming(true) },
-        { label: 'Propriedades', icon: <InfoIcon className="w-4 h-4" />, onClick: onShowProperties },
-        { label: 'Ver Detalhes', icon: <InfoIcon className="w-4 h-4" />, onClick: () => window.location.hash = '#/history' },
-        { label: 'Remover Favorito', icon: <StarIcon className="w-4 h-4 text-yellow-500" />, onClick: () => onSetFavorite(false) },
-        { label: 'Apagar', icon: <TrashIcon className="w-4 h-4" />, onClick: onDelete, className: 'text-red-600 dark:text-red-400' },
-    ];
-
-
-  return (
-    <div className="flex items-center justify-between p-3 bg-white/60 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-        <div className="flex-1 min-w-0">
-            {isRenaming ? (
-                <input
-                    ref={inputRef}
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    onBlur={handleRenameConfirm}
-                    onKeyDown={handleRenameKeyDown}
-                    className="font-semibold text-gray-800 dark:text-gray-200 bg-transparent border-b-2 border-[#24a9c5] focus:outline-none w-full"
-                    onClick={(e) => e.stopPropagation()}
-                />
-            ) : (
-                <p className="font-semibold text-gray-800 dark:text-gray-200 truncate pr-2" title={transcript.filename}>
-                    {transcript.filename}
-                </p>
-            )}
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-                {new Date(transcript.date).toLocaleString('pt-PT', { dateStyle: 'long', timeStyle: 'short' })}
-            </p>
-        </div>
-        <div className="flex items-center ml-2 flex-shrink-0">
-            <DropdownMenu
-                options={dropdownOptions}
-                trigger={
-                    <span className="p-2 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700">
-                        <MoreVerticalIcon className="w-5 h-5" />
-                    </span>
-                }
-            />
-        </div>
-    </div>
-  );
-};
-
-const FavoriteAudioItem: React.FC<{
-  audio: AudioRecording;
-  onDelete: () => void;
-  onTranscribe: () => void;
-  onPlayAudio: (audio: AudioRecording) => void;
-  onSetFavorite: (isFavorite: boolean) => void;
-  onRename: (id: string, newName: string) => void;
-  onShowProperties: () => void;
-}> = ({ audio, onDelete, onTranscribe, onPlayAudio, onSetFavorite, onRename, onShowProperties }) => {
-    const [isRenaming, setIsRenaming] = useState(false);
-    const [newName, setNewName] = useState(audio.name);
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    useEffect(() => {
-        if (isRenaming) {
-            inputRef.current?.focus();
-            inputRef.current?.select();
-        }
-    }, [isRenaming]);
-
-    const handleRenameConfirm = () => {
-        if (newName.trim() && newName.trim() !== audio.name) {
-            onRename(audio.id, newName.trim());
-        }
-        setIsRenaming(false);
-    };
-
-    const handleRenameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') handleRenameConfirm();
-        if (e.key === 'Escape') {
-            setNewName(audio.name);
-            setIsRenaming(false);
+    const handleUnfavorite = async (item: FavoriteItem) => {
+        try {
+            if (item.type === 'transcription') {
+                await updateTranscription(item.id, { is_favorite: false });
+            } else {
+                await updateAudioFile(item.id, { is_favorite: false });
+            }
+            fetchData(); // Refresh the list
+        } catch (err) {
+            console.error("Failed to unfavorite", err);
         }
     };
 
-    const dropdownOptions = [
-        { label: 'Renomear', icon: <EditIcon className="w-4 h-4" />, onClick: () => setIsRenaming(true) },
-        { label: 'Propriedades', icon: <InfoIcon className="w-4 h-4" />, onClick: onShowProperties },
-        { label: 'Transcrever', icon: <SparkleIcon className="w-4 h-4" />, onClick: onTranscribe },
-        { label: 'Remover Favorito', icon: <StarIcon className="w-4 h-4 text-yellow-500" />, onClick: () => onSetFavorite(false) },
-        { label: 'Apagar', icon: <TrashIcon className="w-4 h-4" />, onClick: onDelete, className: 'text-red-600 dark:text-red-400' },
-    ];
+    const handleAction = async (item: FavoriteItem) => {
+        if (item.type === 'transcription') {
+            sessionStorage.setItem('loadTranscriptionId', item.id);
+            window.location.hash = '#/home';
+        } else {
+            // For audio, we'll offer to play it or transcribe it.
+            // For simplicity in this view, let's default to transcribing it.
+            const recording = await getAudioRecording(item.id);
+            if (recording) {
+                onTranscribe(recording);
+            }
+        }
+    };
 
-  return (
-    <div className="flex items-center justify-between p-3 bg-white/60 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm">
-        <div className="flex items-center flex-1 min-w-0">
-            <button
-                onClick={() => onPlayAudio(audio)}
-                aria-label="Reproduzir áudio"
-                title="Reproduzir áudio"
-                className="p-2 mr-2 rounded-full text-gray-400 hover:text-[#24a9c5] hover:bg-cyan-100 dark:hover:bg-cyan-900/50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-800"
-            >
-                <PlayIcon className="w-5 h-5" />
-            </button>
-            <div className="flex-1 min-w-0">
-                {isRenaming ? (
-                    <input
-                        ref={inputRef}
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        onBlur={handleRenameConfirm}
-                        onKeyDown={handleRenameKeyDown}
-                        className="font-semibold text-gray-800 dark:text-gray-200 bg-transparent border-b-2 border-[#24a9c5] focus:outline-none w-full"
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                ) : (
-                    <p className="font-semibold text-gray-800 dark:text-gray-200 truncate" title={audio.name}>
-                        {audio.name}
-                    </p>
-                )}
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {new Date(audio.date).toLocaleString('pt-PT', { dateStyle: 'long', timeStyle: 'short' })}
-                </p>
+    const filteredFavorites = favorites.filter(item => filter === 'all' || item.type === filter);
+
+    if (isLoading) {
+        return <div className="flex-grow flex items-center justify-center"><Loader className="w-8 h-8 text-[#24a9c5]" /></div>;
+    }
+
+    if (error) {
+        return <div className="text-center py-10 text-red-600">{error}</div>;
+    }
+    
+    return (
+        <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
+            <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200 mb-2">Favoritos</h1>
+            <p className="text-gray-600 dark:text-gray-400 mb-6">Aceda rapidamente aos seus ficheiros mais importantes.</p>
+            
+            <div className="flex items-center gap-2 mb-6">
+                <button onClick={() => setFilter('all')} className={`px-3 py-1 text-sm font-medium rounded-full ${filter === 'all' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>Todos</button>
+                <button onClick={() => setFilter('transcription')} className={`px-3 py-1 text-sm font-medium rounded-full ${filter === 'transcription' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>Transcrições</button>
+                <button onClick={() => setFilter('audio')} className={`px-3 py-1 text-sm font-medium rounded-full ${filter === 'audio' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>Áudios</button>
             </div>
-        </div>
-        <div className="flex items-center ml-2 flex-shrink-0">
-            <DropdownMenu
-                options={dropdownOptions}
-                trigger={
-                    <span className="p-2 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700">
-                        <MoreVerticalIcon className="w-5 h-5" />
-                    </span>
-                }
-            />
-        </div>
-    </div>
-  );
-};
 
-
-export const FavoritesPage: React.FC<FavoritesPageProps> = ({ onTranscribe, onPlayAudio }) => {
-  const [transcripts, setTranscripts] = useState<Transcription[]>([]);
-  const [audioFiles, setAudioFiles] = useState<AudioRecording[]>([]);
-  const [allTranscriptions, setAllTranscriptions] = useState<Transcription[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<FavoriteFilter>('all');
-  const [deleteTarget, setDeleteTarget] = useState<{id: string; type: 'transcription' | 'audio'} | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [propertiesItem, setPropertiesItem] = useState<Transcription | AudioRecording | null>(null);
-  const [retranscribeConfirm, setRetranscribeConfirm] = useState<AudioRecording | null>(null);
-
-  const loadFavorites = async () => {
-    try {
-      setIsLoading(true);
-      setError(null);
-      const [{ transcriptions, audioFiles }, allTrans] = await Promise.all([
-        getAllFavorites(),
-        getAllTranscriptions()
-      ]);
-      setTranscripts(transcriptions);
-      setAudioFiles(audioFiles);
-      setAllTranscriptions(allTrans);
-    } catch (err) {
-      setError('Não foi possível carregar os seus favoritos.');
-      console.error(err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    loadFavorites();
-  }, []);
-
-  const handleSetTranscriptionFavorite = async (id: string, isFavorite: boolean) => {
-    await updateTranscription(id, { isFavorite });
-    loadFavorites(); // a simple refresh is easiest
-  };
-
-  const handleSetAudioFavorite = async (id: string, isFavorite: boolean) => {
-    await updateAudioFile(id, { isFavorite });
-    loadFavorites(); // a simple refresh is easiest
-  };
-
-  const handleRenameTranscription = async (id: string, newName: string) => {
-    await updateTranscription(id, { filename: newName });
-    loadFavorites();
-  };
-
-  const handleRenameAudio = async (id: string, newName: string) => {
-    await updateAudioFile(id, { name: newName });
-    loadFavorites();
-  };
-
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-
-    setIsDeleting(true);
-    try {
-      if (deleteTarget.type === 'transcription') {
-        await deleteTranscription(deleteTarget.id);
-      } else {
-        await deleteAudioFile(deleteTarget.id);
-      }
-      loadFavorites(); // Refresh list after deleting
-    } catch (err) {
-      alert('Ocorreu um erro ao apagar o item.');
-      console.error(err);
-    } finally {
-      setIsDeleting(false);
-      setDeleteTarget(null);
-    }
-  };
-
-  const handleTranscribeRequest = (audio: AudioRecording) => {
-    const existingTranscription = allTranscriptions.find(t => t.audioId === audio.id);
-    if (existingTranscription) {
-        setRetranscribeConfirm(audio);
-    } else {
-        onTranscribe(audio);
-    }
-  };
-
-  const handleConfirmRetranscribe = () => {
-    if (retranscribeConfirm) {
-        onTranscribe(retranscribeConfirm);
-        setRetranscribeConfirm(null);
-    }
-  };
-
-  const { filteredTranscripts, filteredAudioFiles } = useMemo(() => {
-    return {
-        filteredTranscripts: filter === 'all' || filter === 'transcriptions' ? transcripts : [],
-        filteredAudioFiles: filter === 'all' || filter === 'recordings' ? audioFiles : [],
-    }
-  }, [filter, transcripts, audioFiles]);
-
-  const hasFavorites = transcripts.length > 0 || audioFiles.length > 0;
-  const hasResults = filteredTranscripts.length > 0 || filteredAudioFiles.length > 0;
-
-
-  return (
-    <>
-      <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
-        <div className="max-w-5xl mx-auto">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200 mb-6">
-            Favoritos
-          </h1>
-
-          {hasFavorites && (
-            <div className="mb-6 flex flex-wrap gap-2">
-                <button onClick={() => setFilter('all')} className={`px-3 py-1 text-sm font-medium rounded-full transition-colors ${filter === 'all' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>
-                    Ambos
-                </button>
-                <button onClick={() => setFilter('transcriptions')} className={`px-3 py-1 text-sm font-medium rounded-full transition-colors ${filter === 'transcriptions' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>
-                    Transcrições
-                </button>
-                <button onClick={() => setFilter('recordings')} className={`px-3 py-1 text-sm font-medium rounded-full transition-colors ${filter === 'recordings' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>
-                    Gravações
-                </button>
-            </div>
-          )}
-          
-          {isLoading && <div className="flex justify-center py-10"><Loader className="w-10 h-10 text-[#24a9c5]" /></div>}
-          {error && <div className="text-center text-red-800 bg-red-100 p-4 rounded-lg">{error}</div>}
-
-          {!isLoading && !error && !hasFavorites && (
-             <div className="text-center py-20">
-                <div className="flex justify-center items-center" aria-hidden="true">
-                    <StarIcon className="w-24 h-24 text-gray-200 dark:text-gray-700" />
+            {filteredFavorites.length === 0 ? (
+                 <div className="text-center py-16">
+                    <StarOutlineIcon className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto" />
+                    <h2 className="mt-4 text-xl font-semibold text-gray-700 dark:text-gray-300">Nenhum favorito encontrado</h2>
+                    <p className="mt-1 text-gray-500 dark:text-gray-400">Clique na estrela ☆ para adicionar um ficheiro aos favoritos.</p>
                 </div>
-                <p className="mt-4 text-lg text-gray-600 dark:text-gray-400">Nenhum favorito encontrado.</p>
-                <p className="text-gray-500 dark:text-gray-500">Clique no ícone de estrela para adicionar um item aos favoritos.</p>
-            </div>
-          )}
-
-          {!isLoading && !error && hasFavorites && !hasResults && (
-            <div className="text-center py-10">
-                <p className="text-gray-600 dark:text-gray-400">Nenhum favorito encontrado para este filtro.</p>
-            </div>
-          )}
-          
-          {!isLoading && !error && hasResults && (
-            <div className="space-y-8">
-                {filteredTranscripts.length > 0 && (
-                    <div>
-                        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
-                            Transcrições Favoritas
-                        </h2>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {filteredTranscripts.map((t) => (
-                                <FavoriteTranscriptionItem 
-                                    key={t.id} 
-                                    transcript={t} 
-                                    onDelete={() => setDeleteTarget({id: t.id, type: 'transcription'})}
-                                    onSetFavorite={(isFav) => handleSetTranscriptionFavorite(t.id, isFav)}
-                                    onRename={handleRenameTranscription}
-                                    onShowProperties={() => setPropertiesItem(t)}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                )}
-                {filteredAudioFiles.length > 0 && (
-                    <div>
-                        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-4 pb-2 border-b border-gray-200 dark:border-gray-700">
-                            Gravações Favoritas
-                        </h2>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                            {filteredAudioFiles.map((audio) => (
-                                <FavoriteAudioItem
-                                    key={audio.id}
-                                    audio={audio}
-                                    onDelete={() => setDeleteTarget({id: audio.id, type: 'audio'})}
-                                    onTranscribe={() => handleTranscribeRequest(audio)}
-                                    onPlayAudio={onPlayAudio}
-                                    onSetFavorite={(isFav) => handleSetAudioFavorite(audio.id, isFav)}
-                                    onRename={handleRenameAudio}
-                                    onShowProperties={() => setPropertiesItem(audio)}
-                                />
-                            ))}
-                        </div>
-                    </div>
-                )}
-            </div>
-          )}
-        </div>
-      </main>
-      <ConfirmationModal
-        isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={handleDelete}
-        isConfirming={isDeleting}
-        title="Apagar Item"
-        message="Tem a certeza de que deseja apagar permanentemente este item? Esta ação não pode ser desfeita."
-      />
-       <ConfirmationModal
-        isOpen={!!retranscribeConfirm}
-        onClose={() => setRetranscribeConfirm(null)}
-        onConfirm={handleConfirmRetranscribe}
-        isConfirming={false}
-        title="Substituir Transcrição"
-        message="Este áudio já foi transcrito. Iniciar um novo processo irá apagar a transcrição antiga permanentemente. Deseja continuar?"
-      />
-      <PropertiesModal item={propertiesItem} onClose={() => setPropertiesItem(null)} />
-    </>
-  );
+            ) : (
+                <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {filteredFavorites.map(item => (
+                        <li key={item.id} className="bg-white/60 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700 p-4 flex flex-col justify-between">
+                            <div>
+                                <div className="flex justify-between items-start">
+                                    <div className={`p-2 rounded-full ${item.type === 'transcription' ? 'bg-cyan-100 dark:bg-cyan-900/50' : 'bg-purple-100 dark:bg-purple-900/50'}`}>
+                                        {item.type === 'transcription' ? 
+                                            <HistoryIcon className="w-5 h-5 text-cyan-600 dark:text-cyan-400" /> : 
+                                            <WaveformIcon className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                                        }
+                                    </div>
+                                    <button onClick={() => handleUnfavorite(item)} title="Remover dos favoritos" className="p-1 text-yellow-400 hover:text-yellow-500">
+                                        <StarIcon className="w-6 h-6" />
+                                    </button>
+                                </div>
+                                <h3 className="mt-3 font-semibold text-gray-800 dark:text-gray-200 truncate">{item.type === 'transcription' ? item.filename : item.name}</h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{new Date(item.created_at).toLocaleDateString('pt-PT')}</p>
+                            </div>
+                            <div className="mt-4">
+                                {item.type === 'transcription' ? (
+                                    <button onClick={() => handleAction(item)} className="w-full text-sm font-semibold text-cyan-600 dark:text-cyan-400 hover:underline">Ver Transcrição</button>
+                                ): (
+                                     <button onClick={() => handleAction(item)} className="w-full text-sm font-semibold text-purple-600 dark:text-purple-400 hover:underline">Transcrever</button>
+                                )}
+                            </div>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </main>
+    );
 };

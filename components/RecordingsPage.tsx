@@ -1,283 +1,226 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { getAllAudioFiles, deleteAudioFile, AudioRecording, addAudioFile, updateAudioFile, getAllTranscriptions, Transcription } from '../utils/db';
-import { Loader } from './Loader';
-import { TrashIcon, SparkleIcon, PlayIcon, SearchIcon, StarIcon, StarOutlineIcon, MoreVerticalIcon, EditIcon, InfoIcon } from './Icons';
-import { longaniLogoUrl } from './Header';
-import { ConfirmationModal } from './ConfirmationModal';
+import React, { useState, useEffect, useCallback } from 'react';
 import { VoiceRecorder } from './VoiceRecorder';
+import { getAllAudioFiles, addAudioFile, deleteAudioFile, updateAudioFile, getAudioRecording } from '../utils/db';
+import { AudioFile, AudioRecording } from '../types';
+import { useAuth } from '../contexts/AuthContext';
+import { Loader } from './Loader';
 import { DropdownMenu } from './DropdownMenu';
+import { MoreVerticalIcon, EditIcon, StarIcon, StarOutlineIcon, TrashIcon, WaveformIcon, PlayIcon } from './Icons';
+import { ConfirmationModal } from './ConfirmationModal';
 import { PropertiesModal } from './PropertiesModal';
+import { formatPlayerTime } from '../utils/audioUtils';
 
-interface AudioItemProps {
-  audio: AudioRecording;
-  onDelete: () => void;
-  onTranscribe: () => void;
-  onPlayAudio: (audio: AudioRecording) => void;
-  onSetFavorite: (isFavorite: boolean) => void;
-  onRename: (id: string, newName: string) => void;
-  onShowProperties: () => void;
-  onViewTranscription: (id: string) => void;
-  allTranscriptions: Transcription[];
-}
-
-const AudioItem: React.FC<AudioItemProps> = ({ audio, onDelete, onTranscribe, onPlayAudio, onSetFavorite, onRename, onShowProperties, onViewTranscription, allTranscriptions }) => {
-    const [isRenaming, setIsRenaming] = useState(false);
-    const [newName, setNewName] = useState(audio.name);
-    const inputRef = useRef<HTMLInputElement>(null);
-
-    const existingTranscription = useMemo(() => allTranscriptions.find(t => t.audioId === audio.id), [allTranscriptions, audio.id]);
+const RenameModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (newName: string) => Promise<void>; currentName: string }> = ({ isOpen, onClose, onSave, currentName }) => {
+    const [name, setName] = useState(currentName);
+    const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        if (isRenaming) {
-            inputRef.current?.focus();
-            inputRef.current?.select();
-        }
-    }, [isRenaming]);
+        if (isOpen) setName(currentName);
+    }, [isOpen, currentName]);
 
-    const handleRenameConfirm = () => {
-        if (newName.trim() && newName.trim() !== audio.name) {
-            onRename(audio.id, newName.trim());
-        }
-        setIsRenaming(false);
+    const handleSave = async () => {
+        setIsSaving(true);
+        await onSave(name);
+        setIsSaving(false);
+        onClose();
     };
 
-    const handleRenameKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-        if (e.key === 'Enter') handleRenameConfirm();
-        if (e.key === 'Escape') {
-            setNewName(audio.name);
-            setIsRenaming(false);
-        }
-    };
+    if (!isOpen) return null;
 
-    const dropdownOptions = [
-        { label: 'Renomear', icon: <EditIcon className="w-4 h-4" />, onClick: () => setIsRenaming(true) },
-        { label: 'Propriedades', icon: <InfoIcon className="w-4 h-4" />, onClick: onShowProperties },
-        { label: existingTranscription ? 'Ver Transcrição' : 'Transcrever', icon: <SparkleIcon className="w-4 h-4" />, onClick: existingTranscription ? () => onViewTranscription(existingTranscription.id) : onTranscribe },
-        { label: audio.isFavorite ? 'Remover Favorito' : 'Adicionar Favorito', icon: audio.isFavorite ? <StarIcon className="w-4 h-4 text-yellow-500" /> : <StarOutlineIcon className="w-4 h-4" />, onClick: () => onSetFavorite(!audio.isFavorite) },
-        { label: 'Apagar', icon: <TrashIcon className="w-4 h-4" />, onClick: onDelete, className: 'text-red-600 dark:text-red-400' },
-    ];
-
-  return (
-    <div className={`flex items-center justify-between p-3 bg-white/60 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm ${existingTranscription ? 'opacity-70' : ''}`}>
-        <div className="flex items-center flex-1 min-w-0">
-            <button
-                onClick={() => onPlayAudio(audio)}
-                aria-label="Reproduzir áudio"
-                title="Reproduzir áudio"
-                className="p-2 mr-2 rounded-full text-gray-400 hover:text-[#24a9c5] hover:bg-cyan-100 dark:hover:bg-cyan-900/50 transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-800"
-            >
-                <PlayIcon className="w-5 h-5" />
-            </button>
-            <div className="flex-1 min-w-0">
-                {isRenaming ? (
-                    <input
-                        ref={inputRef}
-                        value={newName}
-                        onChange={(e) => setNewName(e.target.value)}
-                        onBlur={handleRenameConfirm}
-                        onKeyDown={handleRenameKeyDown}
-                        className="font-semibold text-gray-800 dark:text-gray-200 bg-transparent border-b-2 border-[#24a9c5] focus:outline-none w-full"
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                ) : (
-                    <p className="font-semibold text-gray-800 dark:text-gray-200 truncate" title={audio.name}>
-                        {audio.name}
-                    </p>
-                )}
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {new Date(audio.date).toLocaleString('pt-PT', { dateStyle: 'long', timeStyle: 'short' })}
-                </p>
+    return (
+        <div role="dialog" className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+            <div className="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Renomear Gravação</h3>
+                <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="mt-4 w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md" />
+                <div className="mt-6 flex justify-end gap-3">
+                    <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-600">Cancelar</button>
+                    <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 text-sm font-medium text-white bg-[#24a9c5] border border-transparent rounded-md hover:bg-[#1e8a9f] disabled:opacity-50">
+                        {isSaving ? <Loader className="w-5 h-5"/> : 'Guardar'}
+                    </button>
+                </div>
             </div>
         </div>
-        <div className="flex items-center ml-2 flex-shrink-0">
-            <DropdownMenu
-                options={dropdownOptions}
-                trigger={
-                    <span className="p-2 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700">
-                        <MoreVerticalIcon className="w-5 h-5" />
-                    </span>
-                }
-            />
-        </div>
-    </div>
-  );
+    );
 };
 
-interface RecordingsPageProps {
-    onTranscribe: (audio: AudioRecording) => void;
-    onPlayAudio: (audio: AudioRecording) => void;
-}
-
-export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, onPlayAudio }) => {
-    const [audioFiles, setAudioFiles] = useState<AudioRecording[]>([]);
-    const [allTranscriptions, setAllTranscriptions] = useState<Transcription[]>([]);
+export const RecordingsPage: React.FC<{ onTranscribe: (audio: AudioRecording) => void, onPlayAudio: (audio: AudioRecording) => void }> = ({ onTranscribe, onPlayAudio }) => {
+    const { profile } = useAuth();
+    const [recordings, setRecordings] = useState<AudioFile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-    const [isDeleting, setIsDeleting] = useState(false);
-    const [propertiesItem, setPropertiesItem] = useState<AudioRecording | null>(null);
-    const [retranscribeConfirm, setRetranscribeConfirm] = useState<AudioRecording | null>(null);
 
-    const loadData = async () => {
+    const [itemToDelete, setItemToDelete] = useState<AudioFile | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [itemToRename, setItemToRename] = useState<AudioFile | null>(null);
+    const [itemForProperties, setItemForProperties] = useState<AudioRecording | null>(null);
+    const [actionLoading, setActionLoading] = useState<string | null>(null); // Track ID of item being acted upon
+
+    const fetchData = useCallback(async () => {
+        setIsLoading(true);
+        setError(null);
         try {
-            setIsLoading(true);
-            setError(null);
-            const [audioData, transcriptionData] = await Promise.all([
-                getAllAudioFiles(),
-                getAllTranscriptions()
-            ]);
-            setAudioFiles(audioData);
-            setAllTranscriptions(transcriptionData);
+            const data = await getAllAudioFiles();
+            setRecordings(data);
         } catch (err) {
-            setError('Não foi possível carregar os seus ficheiros de áudio.');
+            setError('Não foi possível carregar as gravações.');
             console.error(err);
         } finally {
             setIsLoading(false);
         }
-    };
-
-    useEffect(() => {
-        loadData();
     }, []);
 
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
     const handleSaveRecording = async (audioBlob: Blob) => {
-        const fileExtension = audioBlob.type.split('/')[1]?.split(';')[0] || 'wav';
-        const newAudio: AudioRecording = {
-            id: `recording-${Date.now()}`,
-            name: `Gravação-${new Date().toISOString().slice(0, 19).replace('T', '_')}.${fileExtension}`,
-            date: Date.now(),
-            type: 'recording',
-            audioBlob: audioBlob,
-            isFavorite: false,
-        };
-        await addAudioFile(newAudio);
-        loadData(); // Refresh list
+        if (!profile) return;
+        const fileName = `Gravação-${new Date().toLocaleString('pt-PT').replace(/[\/:]/g, '-')}.mp4`;
+        try {
+            await addAudioFile({ name: fileName, audioBlob }, profile.id);
+            fetchData();
+        } catch (err) {
+            console.error("Failed to save recording", err);
+            setError("Não foi possível guardar a gravação.");
+        }
     };
     
-    const handleSetFavorite = async (id: string, isFavorite: boolean) => {
-        await updateAudioFile(id, { isFavorite });
-        loadData();
-    };
-    
-    const handleRename = async (id: string, newName: string) => {
-        await updateAudioFile(id, { name: newName });
-        loadData();
-    };
-
     const handleDelete = async () => {
-        if (!deleteTarget) return;
+        if (!itemToDelete) return;
         setIsDeleting(true);
-        await deleteAudioFile(deleteTarget);
-        setIsDeleting(false);
-        setDeleteTarget(null);
-        loadData();
-    };
-    
-    const handleTranscribeRequest = (audio: AudioRecording) => {
-        const existingTranscription = allTranscriptions.find(t => t.audioId === audio.id);
-        if (existingTranscription) {
-            setRetranscribeConfirm(audio);
-        } else {
-            onTranscribe(audio);
+        try {
+            await deleteAudioFile(itemToDelete.id);
+            setItemToDelete(null);
+            fetchData();
+        } catch (err) {
+            console.error("Failed to delete", err);
+        } finally {
+            setIsDeleting(false);
         }
     };
     
-    const handleConfirmRetranscribe = () => {
-        if (retranscribeConfirm) {
-            onTranscribe(retranscribeConfirm);
-            setRetranscribeConfirm(null);
+    const handleToggleFavorite = async (item: AudioFile) => {
+        try {
+            await updateAudioFile(item.id, { is_favorite: !item.is_favorite });
+            fetchData();
+        } catch (err) {
+            console.error("Failed to update favorite status", err);
         }
-    };
-    
-    const handleViewTranscription = (id: string) => {
-        sessionStorage.setItem('highlightTranscriptionId', id);
-        window.location.hash = '#/history';
     };
 
-    const filteredAudioFiles = useMemo(() => {
-        if (!searchQuery.trim()) {
-            return audioFiles;
+    const handleRename = async (newName: string) => {
+        if (!itemToRename) return;
+        try {
+            await updateAudioFile(itemToRename.id, { name: newName });
+            fetchData();
+        } catch (err) {
+            console.error("Failed to rename", err);
         }
-        return audioFiles.filter(audio =>
-            audio.name.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-    }, [audioFiles, searchQuery]);
+    };
+
+    const performAction = async (itemId: string, action: 'transcribe' | 'play' | 'properties') => {
+        setActionLoading(itemId);
+        try {
+            const recording = await getAudioRecording(itemId);
+            if (!recording) {
+                throw new Error("Gravação não encontrada.");
+            }
+            if (action === 'transcribe') onTranscribe(recording);
+            if (action === 'play') onPlayAudio(recording);
+            if (action === 'properties') setItemForProperties(recording);
+        } catch (err) {
+            console.error(`Failed to perform action ${action}`, err);
+            setError("Não foi possível carregar o ficheiro de áudio.");
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
+    if (isLoading) {
+        return <div className="flex-grow flex items-center justify-center"><Loader className="w-8 h-8 text-[#24a9c5]" /></div>;
+    }
+
+    if (error) {
+        return <div className="text-center py-10 text-red-600">{error}</div>;
+    }
+
+    const uploadedFiles = recordings.filter(r => !r.name.startsWith('Gravação-'));
+    const savedRecordings = recordings.filter(r => r.name.startsWith('Gravação-'));
+
+    const renderList = (title: string, data: AudioFile[]) => (
+         <div className="mb-8">
+            <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-4">{title}</h2>
+            {data.length === 0 ? (
+                <p className="text-gray-500 dark:text-gray-400">Nenhum ficheiro encontrado.</p>
+            ) : (
+                <ul className="bg-white/60 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-200 dark:divide-gray-700">
+                    {data.map((item) => (
+                        <li key={item.id} className="flex items-center justify-between p-4">
+                            <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{item.name}</p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                    {new Date(item.created_at).toLocaleString('pt-PT')}
+                                    <span className="mx-2">•</span>
+                                    {formatPlayerTime(item.duration_seconds)}
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 ml-4">
+                                {actionLoading === item.id ? <Loader className="w-5 h-5 text-cyan-500" /> : (
+                                    <>
+                                        <button onClick={() => handleToggleFavorite(item)} className="p-2 text-gray-400 hover:text-yellow-500">
+                                            {item.is_favorite ? <StarIcon className="w-5 h-5 text-yellow-400" /> : <StarOutlineIcon className="w-5 h-5" />}
+                                        </button>
+                                        <DropdownMenu
+                                            trigger={<button className="p-2 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"><MoreVerticalIcon className="w-5 h-5"/></button>}
+                                            options={[
+                                                { label: 'Transcrever', icon: <WaveformIcon className="w-4 h-4" />, onClick: () => performAction(item.id, 'transcribe') },
+                                                { label: 'Reproduzir', icon: <PlayIcon className="w-4 h-4" />, onClick: () => performAction(item.id, 'play') },
+                                                { label: 'Renomear', icon: <EditIcon className="w-4 h-4" />, onClick: () => setItemToRename(item) },
+                                                { label: 'Propriedades', icon: <WaveformIcon className="w-4 h-4" />, onClick: () => performAction(item.id, 'properties') },
+                                                { label: 'Apagar', icon: <TrashIcon className="w-4 h-4" />, onClick: () => setItemToDelete(item), className: 'text-red-600 dark:text-red-500' },
+                                            ]}
+                                        />
+                                    </>
+                                )}
+                            </div>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
 
     return (
-        <>
-            <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
-                <div className="max-w-5xl mx-auto">
-                    <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200 mb-6">
-                        Gravações
-                    </h1>
-
-                    <div className="mb-8">
-                        <VoiceRecorder onSave={handleSaveRecording} />
-                    </div>
-
-                    <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-4">
-                         <h2 className="text-xl font-bold text-gray-800 dark:text-gray-200">Áudios Guardados</h2>
-                        <div className="relative flex-shrink-0 w-full sm:w-64">
-                            <input type="search" placeholder="Pesquisar gravações..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 text-sm text-gray-700 bg-white/80 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#24a9c5] dark:bg-gray-800/80 dark:text-gray-200 dark:border-gray-600"/>
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><SearchIcon className="w-5 h-5 text-gray-400" /></div>
-                        </div>
-                    </div>
-
-                    {isLoading && <div className="flex justify-center py-10"><Loader className="w-10 h-10 text-[#24a9c5]" /></div>}
-                    {error && <div className="text-center text-red-800 bg-red-100 p-4 rounded-lg">{error}</div>}
-
-                    {!isLoading && !error && audioFiles.length === 0 && (
-                        <div className="text-center py-20">
-                            <img src={longaniLogoUrl} alt="Longani Logo" className="h-16 mx-auto mb-4 opacity-30 pointer-events-none" />
-                            <p className="text-lg text-gray-600 dark:text-gray-400">Nenhuma gravação encontrada.</p>
-                            <p className="text-gray-500 dark:text-gray-500">Use o gravador acima para começar.</p>
-                        </div>
-                    )}
-
-                     {!isLoading && !error && audioFiles.length > 0 && filteredAudioFiles.length === 0 && (
-                        <div className="text-center py-10">
-                            <p className="text-gray-600 dark:text-gray-400">Nenhum resultado encontrado para a sua pesquisa.</p>
-                        </div>
-                    )}
-                    
-                    {!isLoading && !error && filteredAudioFiles.length > 0 && (
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        {filteredAudioFiles.map((audio) => (
-                            <AudioItem
-                                key={audio.id}
-                                audio={audio}
-                                onDelete={() => setDeleteTarget(audio.id)}
-                                onTranscribe={() => handleTranscribeRequest(audio)}
-                                onPlayAudio={onPlayAudio}
-                                onSetFavorite={(isFav) => handleSetFavorite(audio.id, isFav)}
-                                onRename={handleRename}
-                                onShowProperties={() => setPropertiesItem(audio)}
-                                onViewTranscription={handleViewTranscription}
-                                allTranscriptions={allTranscriptions}
-                            />
-                        ))}
-                        </div>
-                    )}
+        <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
+            <div className="max-w-5xl mx-auto">
+                <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200 mb-6">
+                    Gravações
+                </h1>
+                <div className="mb-8">
+                    <VoiceRecorder onSave={handleSaveRecording} />
                 </div>
-            </main>
+                {renderList("Ficheiros Carregados", uploadedFiles)}
+                {renderList("Gravações Salvas", savedRecordings)}
+            </div>
+
             <ConfirmationModal
-                isOpen={!!deleteTarget}
-                onClose={() => setDeleteTarget(null)}
+                isOpen={!!itemToDelete}
+                onClose={() => setItemToDelete(null)}
                 onConfirm={handleDelete}
-                isConfirming={isDeleting}
                 title="Apagar Gravação"
-                message="Tem a certeza de que deseja apagar permanentemente esta gravação? Esta ação não pode ser desfeita."
+                message={`Tem a certeza que deseja apagar permanentemente "${itemToDelete?.name}"? Esta ação não pode ser desfeita.`}
+                isConfirming={isDeleting}
             />
-            <ConfirmationModal
-                isOpen={!!retranscribeConfirm}
-                onClose={() => setRetranscribeConfirm(null)}
-                onConfirm={handleConfirmRetranscribe}
-                isConfirming={false}
-                title="Substituir Transcrição"
-                message="Este áudio já foi transcrito. Iniciar um novo processo irá apagar a transcrição antiga permanentemente. Deseja continuar?"
+             <RenameModal
+                isOpen={!!itemToRename}
+                onClose={() => setItemToRename(null)}
+                onSave={handleRename}
+                currentName={itemToRename?.name || ''}
             />
-            <PropertiesModal item={propertiesItem} onClose={() => setPropertiesItem(null)} />
-        </>
+            <PropertiesModal
+                item={itemForProperties}
+                onClose={() => setItemForProperties(null)}
+            />
+        </main>
     );
 };

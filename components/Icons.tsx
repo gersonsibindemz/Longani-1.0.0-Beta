@@ -63,8 +63,8 @@ export const TargetIcon: React.FC<{className?: string}> = ({className}) => (
   </span>
 );
 
-export const InfoIcon: React.FC<{className?: string}> = ({className}) => (
-  <span className={`inline-block ${className || ''}`}>
+export const InfoIcon: React.FC<React.HTMLAttributes<HTMLSpanElement>> = ({className, ...rest}) => (
+  <span className={`inline-block ${className || ''}`} {...rest}>
     <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 26 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
       <circle cx="12" cy="12" r="10" />
       <line x1="12" y1="16" x2="12" y2="12" />
@@ -202,7 +202,7 @@ export const UserIcon: React.FC<{className?: string}> = ({className}) => (
   </span>
 );
 
-// FIX: Updated the UsersIcon component to accept and spread additional HTML attributes (like `title`) to its root `span` element.
+// Updated the UsersIcon component to accept and spread additional HTML attributes (like `title`) to its root `span` element.
 export const UsersIcon: React.FC<React.HTMLAttributes<HTMLSpanElement>> = ({className, ...rest}) => (
     <span className={`inline-block ${className || ''}`} {...rest}>
       <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 26 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">

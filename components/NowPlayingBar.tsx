@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AudioRecording } from '../utils/db';
+import { AudioRecording } from '../types';
 import { PlayIcon, PauseIcon, CloseIcon } from './Icons';
 import { formatPlayerTime } from '../utils/audioUtils';
 

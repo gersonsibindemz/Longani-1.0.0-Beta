@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MenuIcon, CloseIcon, UserIcon, SunIcon, MoonIcon, UsersIcon, SearchIcon, CreditCardIcon } from './Icons';
-import { Theme, PreferredLanguage } from '../App';
-import type { User } from '../utils/db';
+import type { Profile, Theme, PreferredLanguage } from '../types';
 import { isTrialActive, getTrialDaysRemaining, getPlanLimits, TRIAL_PERIOD_DAYS } from '../utils/audioUtils';
 
 // The logo is loaded from an external URL.
@@ -13,7 +12,7 @@ interface HeaderProps {
   setTheme: (theme: Theme) => void;
   preferredLanguage: PreferredLanguage;
   setPreferredLanguage: (lang: PreferredLanguage) => void;
-  currentUser: User | null;
+  currentUser: Profile | null;
   onLogout: () => void;
   onSearchClick: () => void;
   onHomeReset: () => void;
@@ -78,16 +77,15 @@ export const Header: React.FC<HeaderProps> = (props) => {
   };
 
   const isTrialPlan = currentUser?.plan === 'trial';
-  const trialIsActive = isTrialActive(currentUser?.createdAt);
-  const trialDaysRemaining = getTrialDaysRemaining(currentUser?.createdAt);
+  const trialIsActive = isTrialActive(currentUser?.created_at);
+  const trialDaysRemaining = getTrialDaysRemaining(currentUser?.created_at);
   const trialProgressPercentage = isTrialPlan && trialIsActive ? (trialDaysRemaining / TRIAL_PERIOD_DAYS) * 100 : 0;
 
   const planLimits = getPlanLimits();
-  const currentPlanLimit = currentUser ? planLimits[currentUser.plan || 'básico'] : 0;
+  const currentPlanLimit = currentUser ? planLimits[currentUser.plan || 'basico'] : 0;
   const usagePercentage = currentPlanLimit !== Infinity && currentPlanLimit > 0 ? (monthlyUsage / currentPlanLimit) * 100 : 0;
   const usageMinutes = Math.floor(monthlyUsage / 60);
   const limitHours = currentPlanLimit !== Infinity ? Math.round(currentPlanLimit / 3600) : 'Ilimitado';
-  // FIX: Created a separate `limitInMinutes` variable for calculations to avoid performing arithmetic on `limitHours`, which can be a string ('Ilimitado'). This resolves the TypeScript error.
   const limitInMinutes = typeof limitHours === 'number' ? limitHours * 60 : null;
 
   return (
@@ -272,8 +270,8 @@ export const Header: React.FC<HeaderProps> = (props) => {
             {/* Sidebar Header - User Profile */}
             <div className="flex items-center gap-3 pb-4 mb-4 border-b border-gray-200/60 dark:border-gray-700/60">
                 <a href="#/profile" onClick={handleNavClick} className="w-12 h-12 flex-shrink-0 flex items-center justify-center bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-800 ring-transparent hover:ring-[#24a9c5] transition-shadow">
-                    {currentUser?.photo ? (
-                        <img src={currentUser.photo} alt="Profile" className="w-full h-full object-cover" />
+                    {currentUser?.photo_url ? (
+                        <img src={currentUser.photo_url} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
                         <UserIcon className="w-6 h-6 text-gray-500 dark:text-gray-300" />
                     )}
@@ -289,8 +287,8 @@ export const Header: React.FC<HeaderProps> = (props) => {
                         >
                             <CreditCardIcon className="w-4 h-4 mr-1.5" />
                             <span>Plano </span>
-                            <span className="capitalize font-semibold ml-1">{currentUser.plan || 'Básico'}</span>
-                            {isTrialActive(currentUser.createdAt) && (
+                            <span className="capitalize font-semibold ml-1">{currentUser.plan || 'basico'}</span>
+                            {isTrialActive(currentUser.created_at) && (
                                 <span className="ml-2 text-xs font-semibold bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full dark:bg-yellow-900 dark:text-yellow-200">
                                     Trial
                                 </span>
@@ -332,7 +330,6 @@ export const Header: React.FC<HeaderProps> = (props) => {
                         <span className="font-semibold">
                             {limitInMinutes === null
                                 ? `${usageMinutes} min. usados`
-                                // FIX: Used the type-safe `limitInMinutes` variable for the calculation.
                                 : `${usageMinutes} / ${limitInMinutes} min`
                             }
                         </span>
@@ -344,9 +341,7 @@ export const Header: React.FC<HeaderProps> = (props) => {
                             role="progressbar"
                             aria-valuenow={usageMinutes}
                             aria-valuemin={0}
-                            // FIX: Used the type-safe `limitInMinutes` variable here for the `aria-valuemax` attribute.
                             aria-valuemax={limitInMinutes === null ? usageMinutes : limitInMinutes}
-                            // FIX: Used the type-safe `limitInMinutes` variable to construct the `aria-label`, ensuring no arithmetic is performed on a string.
                             aria-label={`Uso mensal: ${usageMinutes} de ${limitInMinutes === null ? 'ilimitados' : limitInMinutes} minutos`}
                         ></div>
                     </div>

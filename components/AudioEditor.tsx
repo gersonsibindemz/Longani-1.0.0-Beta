@@ -1,14 +1,12 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { sliceAudio, formatPlayerTime } from '../utils/audioUtils';
 import { Loader } from './Loader';
-// FIX: Aliased PlayIcon and PauseIcon to match the component's usage, and imported the newly added ZoomInIcon and ZoomOutIcon.
-import { PlayIcon as PlayFilledIcon, PauseIcon as PauseFilledIcon, ZoomInIcon, ZoomOutIcon, ReloadIcon } from './Icons';
+import { PlayIcon as PlayFilledIcon, PauseIcon as PauseFilledIcon, ZoomInIcon, ZoomOutIcon } from './Icons';
 
 // Augment the window object for TypeScript to recognize WaveSurfer and its plugins
 declare global {
   interface Window {
     WaveSurfer: any;
-    RegionsPlugin: any;
   }
 }
 
@@ -46,9 +44,8 @@ export const AudioEditor: React.FC<AudioEditorProps> = ({ audioFile, onSegmentRe
     if (!waveformRef.current || !audioFile) return;
 
     const WaveSurfer = window.WaveSurfer;
-    const RegionsPlugin = window.WaveSurfer.Regions;
     
-    if (!WaveSurfer || !RegionsPlugin) {
+    if (!WaveSurfer) {
         setError("A biblioteca do editor de áudio não conseguiu carregar.");
         setIsLoading(false);
         return;
@@ -69,8 +66,6 @@ export const AudioEditor: React.FC<AudioEditorProps> = ({ audioFile, onSegmentRe
       minPxPerSec: 10,
     });
 
-    const wsRegions = ws.registerPlugin(RegionsPlugin.create());
-
     ws.on('ready', (newDuration: number) => {
       setDuration(newDuration);
       setIsLoading(false);
@@ -86,21 +81,7 @@ export const AudioEditor: React.FC<AudioEditorProps> = ({ audioFile, onSegmentRe
         setError(`Erro ao carregar áudio: ${err.message}`);
         setIsLoading(false);
     });
-
-    wsRegions.on('region-updated', (region: any) => {
-      setSelection({ start: region.start, end: region.end });
-      handleSliceAudio(region.start, region.end);
-    });
     
-    wsRegions.on('region-created', (region: any) => {
-        if (regionRef.current) {
-            regionRef.current.remove();
-        }
-        regionRef.current = region;
-        setSelection({ start: region.start, end: region.end });
-        handleSliceAudio(region.start, region.end);
-    });
-
     wavesurferRef.current = ws;
 
     return () => {

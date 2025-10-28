@@ -6,11 +6,10 @@ import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { ProgressBar } from './components/ProgressBar';
 import { Loader } from './components/Loader';
 import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon, SearchIcon, WaveformIcon, TranslateIcon, UsersIcon } from './components/Icons';
-import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, getNumericProcessingTimeEstimate, formatProcessingTime, translateLanguageName, isTrialActive, getTrialDaysRemaining, getPlanLimits, calculateMonthlyUsage } from './utils/audioUtils';
+import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, formatProcessingTime, translateLanguageName, isTrialActive, calculateMonthlyUsage } from './utils/audioUtils';
 import { HistoryPage } from './components/HistoryPage';
 import { RecordingsPage } from './components/RecordingsPage';
-// FIX: Imported the `updateTranscription` function to allow saving refined transcription data to the database.
-import { addTranscription, addAudioFile, AudioRecording, getAllTranscriptions, Transcription, getTranscriptionById, getAudioFile, updateTranscription, deleteTranscription, getAllAudioFiles, getAllSavedTranslations, SavedTranslation } from './utils/db';
+import { addTranscription, addAudioFile, getAllTranscriptions, getTranscriptionById, getAudioRecording, updateTranscription, deleteTranscription, getAudioFilesForCurrentMonth } from './utils/db';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FavoritesPage } from './components/FavoritesPage';
 import { TranslationsPage } from './components/TranslationsPage';
@@ -20,16 +19,16 @@ import { RefineModal } from './components/RefineModal';
 import type { RefineContentType, RefineOutputFormat } from './services/geminiService';
 import { SignUpPage } from './components/SignUpPage';
 import { ProfilePage } from './components/ProfilePage';
-import type { User } from './utils/db';
 import { TeamsPage } from './components/TeamsPage';
 import DesktopNotice from './components/DesktopNotice';
 import { PlansPage } from './components/PlansPage';
+import { useAuth } from './contexts/AuthContext';
+import { AwaitingConfirmationPage } from './components/AwaitingConfirmationPage';
+import { GoogleDrivePicker } from './components/GoogleDrivePicker';
+import type { Theme, PreferredLanguage, AudioRecording, AudioFile, Transcription } from './types';
 
 
 type ProcessStage = 'idle' | 'transcribing' | 'cleaning' | 'completed';
-export type Theme = 'light' | 'dark';
-export type PreferredLanguage = 'pt' | 'en';
-
 type ExpandedTranscript = 'raw' | 'cleaned' | 'none';
 type OutputPreference = 'both' | 'raw' | 'cleaned';
 
@@ -107,7 +106,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
         const results: SearchResult[] = [];
 
         allTranscriptions.forEach(item => {
-            if (item.filename.toLowerCase().includes(query) || item.rawTranscript.toLowerCase().includes(query) || item.cleanedTranscript.toLowerCase().includes(query)) {
+            if (item.filename.toLowerCase().includes(query) || (item.raw_transcript && item.raw_transcript.toLowerCase().includes(query)) || (item.cleaned_transcript && item.cleaned_transcript.toLowerCase().includes(query))) {
                 results.push({ type: 'transcription', item });
             }
         });
@@ -120,7 +119,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
             const bMatch = bName.toLowerCase().includes(query);
             if (aMatch && !bMatch) return -1;
             if (!aMatch && bMatch) return 1;
-            return b.item.date - a.item.date; // Secondary sort by date
+            return new Date(b.item.created_at).getTime() - new Date(a.item.created_at).getTime(); // Secondary sort by date
         });
 
         return results;
@@ -224,6 +223,9 @@ const FeatureLockedPage: React.FC<{featureName: string, requiredPlan: string}> =
 
 
 const App: React.FC = () => {
+  const { session, profile, loading, signOut, updateProfilePreferences, isAwaitingConfirmation } = useAuth();
+  const currentUser = profile; // Use profile as the main user object for app logic
+
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [rawTranscript, setRawTranscript] = useState<string>('');
@@ -246,7 +248,6 @@ const App: React.FC = () => {
   const [currentAudioId, setCurrentAudioId] = useState<string | null>(null);
   const [currentTranscriptionId, setCurrentTranscriptionId] = useState<string | null>(null);
   const [recentTranscriptions, setRecentTranscriptions] = useState<Transcription[]>([]);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showDesktopLock, setShowDesktopLock] = useState(window.innerWidth >= 1280);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [monthlyUsage, setMonthlyUsage] = useState(0);
@@ -276,8 +277,8 @@ const App: React.FC = () => {
         }
 
         let audioForPlayer: AudioRecording | null = null;
-        if (transcription.audioId) {
-            audioForPlayer = await getAudioFile(transcription.audioId);
+        if (transcription.audio_id) {
+            audioForPlayer = await getAudioRecording(transcription.audio_id);
         }
 
         handleReset();
@@ -292,17 +293,17 @@ const App: React.FC = () => {
                 setAudioDuration(duration);
                  // Since we are loading, we can't re-detect the language easily without the base64.
                 // We'll set a placeholder. The original language is preserved in the raw transcript.
-                setDetectedLanguage(transcription.originalLanguage || 'N/A');
+                setDetectedLanguage(transcription.original_language || 'N/A');
             } catch {
                 // Ignore duration errors on reload
             }
         }
 
-        setRawTranscript(transcription.rawTranscript);
-        setCleanedTranscript(transcription.cleanedTranscript);
-        if (transcription.refinedTranscript && transcription.refinedContentType && transcription.refinedOutputFormat) {
-            setAdvancedTranscript(transcription.refinedTranscript);
-            setAdvancedTranscriptTitle(getRefinedTitle(transcription.refinedContentType, transcription.refinedOutputFormat));
+        setRawTranscript(transcription.raw_transcript || '');
+        setCleanedTranscript(transcription.cleaned_transcript || '');
+        if (transcription.refined_transcript && transcription.refined_content_type && transcription.refined_output_format) {
+            setAdvancedTranscript(transcription.refined_transcript);
+            setAdvancedTranscriptTitle(getRefinedTitle(transcription.refined_content_type, transcription.refined_output_format));
         }
         
         setCurrentTranscriptionId(transcription.id);
@@ -346,14 +347,12 @@ const App: React.FC = () => {
     }
   }, [page]);
 
-  // This useEffect calculates the user's monthly usage and runs whenever the user or page changes,
-  // or when a transcription process completes, ensuring the data is always fresh.
   useEffect(() => {
     const calculateUsage = async () => {
         if (currentUser) {
             try {
-                const all = await getAllTranscriptions();
-                const usage = calculateMonthlyUsage(all);
+                const audioFiles: AudioFile[] = await getAudioFilesForCurrentMonth();
+                const usage = calculateMonthlyUsage(audioFiles);
                 setMonthlyUsage(usage);
             } catch (e) {
                 console.error("Failed to calculate monthly usage:", e);
@@ -366,34 +365,18 @@ const App: React.FC = () => {
     calculateUsage();
   }, [currentUser, page, processStage]);
 
-  // This useEffect runs once on mount to load user, theme, and handle initial loading animation.
+  // Load preferences from user profile
   useEffect(() => {
-    const savedUserJSON = localStorage.getItem('longaniUser');
-    if (savedUserJSON) {
-        try {
-            const user = JSON.parse(savedUserJSON);
-            if (!user.status) { // Handle old user objects from before the status field was added
-                user.status = 'active';
-            }
-            if (!user.plan) { // Add default plan if missing
-                user.plan = 'trial';
-            }
-            setCurrentUser(user);
-        } catch (e) {
-            console.error("Failed to parse user from localStorage", e);
-            localStorage.removeItem('longaniUser');
-        }
+    if (profile?.preferences) {
+        const prefs = profile.preferences as { theme?: Theme, language?: PreferredLanguage };
+        if (prefs.theme) setTheme(prefs.theme);
+        if (prefs.language) setPreferredLanguage(prefs.language);
     }
+  }, [profile]);
 
-    const storedTheme = localStorage.getItem('theme') as Theme | null;
-    if (storedTheme && ['light', 'dark'].includes(storedTheme)) {
-      setTheme(storedTheme);
-    }
-    const storedLanguage = localStorage.getItem('preferredLanguage') as PreferredLanguage | null;
-    if (storedLanguage && ['pt', 'en'].includes(storedLanguage)) {
-      setPreferredLanguage(storedLanguage);
-    }
 
+  // This useEffect runs once on mount to handle initial loading animation.
+  useEffect(() => {
     const img = new Image();
     img.src = longaniLogoUrl;
     const showApp = () => setIsAppVisible(true);
@@ -427,28 +410,23 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // This useEffect handles applying the theme and saving the preference.
+  // This useEffect handles applying the theme. The preference is saved via AuthContext.
   useEffect(() => {
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
     } else {
       document.documentElement.classList.remove('dark');
     }
-    
-    try {
-      localStorage.setItem('theme', theme);
-    } catch (e) {
-      console.warn('Não foi possível guardar o tema no localStorage:', e);
-    }
   }, [theme]);
 
   const handleSetPreferredLanguage = (lang: PreferredLanguage) => {
     setPreferredLanguage(lang);
-    try {
-        localStorage.setItem('preferredLanguage', lang);
-    } catch (e) {
-        console.warn('Não foi possível guardar o idioma no localStorage:', e);
-    }
+    updateProfilePreferences({ language: lang });
+  };
+
+  const handleSetTheme = (newTheme: Theme) => {
+    setTheme(newTheme);
+    updateProfilePreferences({ theme: newTheme });
   };
 
   // Effect to clean up the audio object URLs to prevent memory leaks.
@@ -627,7 +605,7 @@ const App: React.FC = () => {
     setNowPlayingUrl(url);
   };
 
-    const trialHasExpired = !!currentUser?.createdAt && !isTrialActive(currentUser.createdAt);
+    const trialHasExpired = !!currentUser?.created_at && !isTrialActive(currentUser.created_at);
     const isFeatureLocked = currentUser?.plan === 'trial' && trialHasExpired;
 
   const handleProcessAudio = useCallback(async () => {
@@ -647,24 +625,8 @@ const App: React.FC = () => {
         return;
     }
     
-    const limits = getPlanLimits();
-    const currentPlanLimit = limits[currentUser.plan || 'básico'];
-    
-    if (currentPlanLimit !== Infinity) {
-        const allTranscriptions = await getAllTranscriptions();
-        const usage = calculateMonthlyUsage(allTranscriptions);
-
-        if (usage + audioDuration > currentPlanLimit) {
-            const usageMinutes = Math.round(usage / 60);
-            const limitHours = Math.round(currentPlanLimit / 3600);
-            setError(
-                <>
-                    Atingiu o seu limite mensal de {limitHours} horas ({usageMinutes} min. usados). Por favor, <a href="#/plans" className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para continuar a transcrever.
-                </>
-            );
-            return;
-        }
-    }
+    // Usage check logic removed from here as it's now handled by the useEffect hook and displayed in the header.
+    // The Gemini API call will fail if the user is over quota, and the error will be caught.
     
     if (!detectedLanguage) {
         setError("O idioma do áudio ainda não foi detetado. Por favor, aguarde ou recarregue o ficheiro.");
@@ -686,18 +648,14 @@ const App: React.FC = () => {
     try {
       let audioId = currentAudioId;
       if (!audioId) {
-        const newAudioFile = {
-          id: `audio-${Date.now()}-${audioFile.name}`,
+        const savedAudioFile = await addAudioFile({
           name: audioFile.name,
-          date: Date.now(),
-          type: 'upload' as const,
           audioBlob: audioFile,
-          isFavorite: false,
-        };
-        await addAudioFile(newAudioFile);
-        audioId = newAudioFile.id;
+        }, currentUser.id);
+        audioId = savedAudioFile.id;
+        setCurrentAudioId(savedAudioFile.id);
       } else {
-        const oldTranscription = (await getAllTranscriptions()).find(t => t.audioId === audioId);
+        const oldTranscription = (await getAllTranscriptions()).find(t => t.audio_id === audioId);
         if (oldTranscription) {
             await deleteTranscription(oldTranscription.id);
         }
@@ -750,13 +708,11 @@ const App: React.FC = () => {
         await addTranscription({
           id: transcriptionId,
           filename: audioFile.name,
-          date: Date.now(),
-          rawTranscript: fullRawTranscript,
-          cleanedTranscript: finalHtml,
-          audioId: audioId,
-          duration: audioDuration,
-          isFavorite: false,
-          originalLanguage: detectedLanguage,
+          raw_transcript: fullRawTranscript,
+          cleaned_transcript: finalHtml,
+          audio_id: audioId,
+          user_id: currentUser.id,
+          original_language: detectedLanguage,
         });
         setCurrentTranscriptionId(transcriptionId);
       }
@@ -799,9 +755,9 @@ const App: React.FC = () => {
       if (currentTranscriptionId && !refinementError) {
           try {
               await updateTranscription(currentTranscriptionId, {
-                  refinedTranscript: fullRefinedText,
-                  refinedContentType: contentType,
-                  refinedOutputFormat: outputFormat,
+                  refined_transcript: fullRefinedText,
+                  refined_content_type: contentType,
+                  refined_output_format: outputFormat,
               });
           } catch (dbError) {
               console.error("Failed to save refinement:", dbError);
@@ -820,68 +776,39 @@ const App: React.FC = () => {
     window.location.hash = '#/history';
   };
 
-  const handleAuthSuccess = (username: string, email: string, isNewUser: boolean) => {
-    const userObject: User = {
-        id: email,
-        name: username,
-        photo: null,
-        status: 'active',
-        plan: isNewUser ? 'trial' : 'básico',
-    };
-    if (isNewUser) {
-        userObject.createdAt = Date.now();
-    } else {
-        // For existing users, preserve their plan from localStorage to avoid resetting it.
-        const savedUserJSON = localStorage.getItem('longaniUser');
-        if (savedUserJSON) {
-            try {
-                const savedUser = JSON.parse(savedUserJSON);
-                if (savedUser.id === email) {
-                    userObject.plan = savedUser.plan || 'básico';
-                    userObject.createdAt = savedUser.createdAt;
-                }
-            } catch (e) { console.error("Could not parse user from storage", e)}
-        }
-    }
-    setCurrentUser(userObject);
-    localStorage.setItem('longaniUser', JSON.stringify(userObject));
-    window.location.hash = '#/home';
-  };
-
-  const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('longaniUser');
-    window.location.hash = '#/login';
-  };
-  
-  const handleUserUpdate = (updatedUser: User) => {
-    setCurrentUser(updatedUser);
-    localStorage.setItem('longaniUser', JSON.stringify(updatedUser));
-  };
-
-  const handleProfileUpdate = (updatedUser: User) => {
-    // Preserve ID and teamId during profile updates
-    const finalUser = { ...currentUser, ...updatedUser };
-    setCurrentUser(finalUser);
-    localStorage.setItem('longaniUser', JSON.stringify(finalUser));
-  };
-
   const isProcessing = processStage === 'transcribing' || processStage === 'cleaning';
   const isAccordionMode = processStage === 'completed' && !advancedTranscript;
   const finalDisplayIsSingleColumn = (processStage === 'completed' && outputPreference !== 'both') || !!advancedTranscript;
 
   const renderPage = () => {
+    if (loading) {
+        return (
+            <div className="flex-grow flex items-center justify-center">
+                <Loader className="w-12 h-12 text-[#24a9c5]" />
+            </div>
+        );
+    }
+
+    if (!session) {
+        switch (page) {
+            case 'signup':
+                return <SignUpPage />;
+            case 'awaiting-confirmation':
+                return <AwaitingConfirmationPage />;
+            case 'login':
+            default:
+                return <LoginPage />;
+        }
+    }
+
+    // From here, we know the user is authenticated.
     const shouldShowTrialBanner = isFeatureLocked;
 
     switch (page) {
-      case 'login':
-        return <LoginPage onLoginSuccess={(u, e) => handleAuthSuccess(u, e, false)} />;
-      case 'signup':
-        return <SignUpPage onSignUpSuccess={(u, e) => handleAuthSuccess(u, e, true)} />;
       case 'profile':
-        return <ProfilePage user={currentUser} onUpdateProfile={handleProfileUpdate} onLogout={handleLogout} />;
+        return <ProfilePage />;
       case 'history':
-        return <HistoryPage currentUser={currentUser} />;
+        return <HistoryPage />;
       case 'recordings':
         return <RecordingsPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} />;
       case 'favorites':
@@ -891,11 +818,11 @@ const App: React.FC = () => {
         if (!canAccessTeams) {
             return <FeatureLockedPage featureName="Equipas" requiredPlan="Ideal ou superior" />;
         }
-        return <TeamsPage currentUser={currentUser} onUserUpdate={handleUserUpdate} />;
+        return <TeamsPage />;
       case 'translations':
         return <TranslationsPage />;
       case 'plans':
-        return <PlansPage currentUser={currentUser} onUserUpdate={handleUserUpdate} />;
+        return <PlansPage />;
       case 'home':
       default:
         const recentHistorySection = (
@@ -909,7 +836,7 @@ const App: React.FC = () => {
                                 <button onClick={() => handleHistoryClick(t.id)} className="w-full text-left flex justify-between items-center py-3 hover:bg-gray-500/10 rounded-md transition-colors -mx-2 px-2">
                                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate pr-4" title={t.filename}>{t.filename}</span>
                                     <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
-                                        {new Date(t.date).toLocaleString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                        {new Date(t.created_at).toLocaleString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                 </button>
                             </li>
@@ -945,6 +872,7 @@ const App: React.FC = () => {
                         <div className="max-w-3xl mx-auto w-full bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
                           <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
                             <FileUpload key={fileInputKey} onFileChange={handleFileChange} disabled={isProcessing} fileSelected={fileSelectionSuccess} />
+                            <GoogleDrivePicker onFileImported={handleFileChange} />
                           </div>
                           <p className="text-gray-500 dark:text-gray-400 text-xs mt-4 text-center">
                             Ficheiros de áudio suportados (.mp3, .wav, .m4a, etc.) com um limite de {MAX_FILE_SIZE_MB}MB.
@@ -1228,26 +1156,30 @@ const App: React.FC = () => {
   if (showDesktopLock) {
     return <DesktopNotice />;
   }
+  
+  if (isAwaitingConfirmation) {
+    return <AwaitingConfirmationPage />;
+  }
 
   return (
     <>
       <div className={`min-h-screen flex flex-col transition-opacity duration-500 ease-in-out ${isAppVisible ? 'opacity-100' : 'opacity-0'} ${nowPlaying ? 'pb-24 sm:pb-20' : ''}`}>
-        {page !== 'login' && page !== 'signup' && (
+        {session && currentUser && (
           <Header 
             page={page} 
             theme={theme} 
-            setTheme={setTheme} 
+            setTheme={handleSetTheme} 
             preferredLanguage={preferredLanguage} 
             setPreferredLanguage={handleSetPreferredLanguage}
             currentUser={currentUser}
-            onLogout={handleLogout}
+            onLogout={signOut}
             onSearchClick={() => setIsSearchOpen(true)}
             onHomeReset={handleReset}
             monthlyUsage={monthlyUsage}
           />
         )}
         {renderPage()}
-        {page !== 'login' && page !== 'signup' && (
+        {session && (
             <footer className="hidden sm:block text-center py-6 text-gray-500 dark:text-gray-400 text-sm select-none">
                 <p>
                     © {new Date().getFullYear()} Longani &middot; v.1.0.0 Beta
@@ -1255,7 +1187,7 @@ const App: React.FC = () => {
             </footer>
         )}
       </div>
-      {nowPlaying && nowPlayingUrl && page !== 'login' && page !== 'signup' && (
+      {nowPlaying && nowPlayingUrl && session && (
         <NowPlayingBar 
           audio={nowPlaying} 
           audioUrl={nowPlayingUrl} 

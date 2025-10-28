@@ -9,9 +9,10 @@ interface ConfirmationModalProps {
   title: string;
   message: string;
   isConfirming: boolean;
+  confirmButtonText?: string;
 }
 
-export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ isOpen, onClose, onConfirm, title, message, isConfirming }) => {
+export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ isOpen, onClose, onConfirm, title, message, isConfirming, confirmButtonText = 'Apagar' }) => {
   if (!isOpen) return null;
 
   return (
@@ -63,7 +64,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({ isOpen, on
             className="w-full inline-flex justify-center items-center gap-2 rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 disabled:bg-red-400 dark:disabled:bg-red-800 disabled:cursor-not-allowed"
           >
             {isConfirming && <Loader className="w-4 h-4" />}
-            Apagar
+            {confirmButtonText}
           </button>
         </div>
       </div>
