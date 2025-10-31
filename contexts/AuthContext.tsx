@@ -77,6 +77,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 .insert({
                   id: newAuthUser.id,
                   name: newAuthUser.user_metadata?.full_name ?? 'Novo Utilizador',
+                  device_id: newAuthUser.user_metadata?.device_id, // Get device_id from metadata
                 })
                 .select()
                 .single();
@@ -125,10 +126,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     },
 
     signUp: async (email: string, pass: string, name: string) => {
+      // Generate and store a unique device ID to prevent multiple trial accounts.
+      let deviceId = localStorage.getItem('longani_deviceId');
+      if (!deviceId) {
+        deviceId = crypto.randomUUID();
+        localStorage.setItem('longani_deviceId', deviceId);
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password: pass,
-        options: { data: { full_name: name } },
+        options: {
+          data: {
+            full_name: name,
+            device_id: deviceId, // Pass the device ID in user metadata
+          },
+        },
       });
 
       if (!error && data.user) {

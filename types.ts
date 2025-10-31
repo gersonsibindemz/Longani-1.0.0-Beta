@@ -56,6 +56,7 @@ export type Database = {
       profiles: {
         Row: {
           created_at: string
+          device_id: string | null
           id: string
           name: string
           photo_url: string | null
@@ -65,6 +66,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          device_id?: string | null
           id: string
           name: string
           photo_url?: string | null
@@ -74,6 +76,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          device_id?: string | null
           id?: string
           name?: string
           photo_url?: string | null

@@ -369,7 +369,7 @@ export const translateLanguageName = (englishNames: string | null): string => {
 
 // --- Trial Period Utilities ---
 
-export const TRIAL_PERIOD_DAYS = 5;
+export const TRIAL_PERIOD_DAYS = 15;
 const TRIAL_PERIOD_MS = TRIAL_PERIOD_DAYS * 24 * 60 * 60 * 1000;
 
 /**

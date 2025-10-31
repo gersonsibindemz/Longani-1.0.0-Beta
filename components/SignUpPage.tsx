@@ -47,6 +47,8 @@ export const SignUpPage: React.FC = () => {
 
         if (signUpError.message.includes('User already registered')) {
             setError('Este email já está registado. Tente fazer login.');
+        } else if (signUpError.message.includes('violates unique constraint') && signUpError.message.includes('device_id')) {
+            setError('Este dispositivo já está associado a uma conta. Apenas uma conta por dispositivo é permitida.');
         } else if (signUpError.message.includes('Database error')) {
             // Provide a clearer message for the specific error the user is facing.
             setError('Ocorreu um erro ao criar o seu perfil. Por favor, tente novamente mais tarde ou contacte o suporte.');

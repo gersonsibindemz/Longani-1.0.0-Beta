@@ -6,7 +6,7 @@ import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { ProgressBar } from './components/ProgressBar';
 import { Loader } from './components/Loader';
 import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon, SearchIcon, WaveformIcon, TranslateIcon, UsersIcon, SaveIcon, CheckIcon } from './components/Icons';
-import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, formatProcessingTime, translateLanguageName, isTrialActive, calculateMonthlyUsage } from './utils/audioUtils';
+import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, formatProcessingTime, translateLanguageName, isTrialActive, getTrialDaysRemaining, calculateMonthlyUsage } from './utils/audioUtils';
 import { HistoryPage } from './components/HistoryPage';
 import { RecordingsPage } from './components/RecordingsPage';
 import { addTranscription, addAudioFile, getAllTranscriptions, getTranscriptionById, getAudioRecording, updateTranscription, deleteTranscription, getAudioFilesForCurrentMonth, getTranscriptionByAudioId } from './utils/db';
@@ -707,7 +707,9 @@ const App: React.FC = () => {
     setNowPlayingUrl(url);
   };
 
-    const trialHasExpired = !!currentUser?.created_at && !isTrialActive(currentUser.created_at);
+    const trialIsActive = isTrialActive(currentUser?.created_at);
+    const trialDaysRemaining = getTrialDaysRemaining(currentUser?.created_at);
+    const trialHasExpired = !!currentUser?.created_at && !trialIsActive;
     const isFeatureLocked = currentUser?.plan === 'trial' && trialHasExpired;
 
   const handleProcessAudio = useCallback(async () => {
@@ -902,7 +904,9 @@ const App: React.FC = () => {
     }
 
     // From here, we know the user is authenticated.
-    const shouldShowTrialBanner = isFeatureLocked;
+    const trialWarningDays = 5;
+    const shouldShowTrialWarning = currentUser?.plan === 'trial' && trialIsActive && trialDaysRemaining <= trialWarningDays;
+    const shouldShowTrialExpiredBanner = isFeatureLocked;
     const urlParts = page.split('/');
 
     switch (urlParts[0]) {
@@ -960,7 +964,20 @@ const App: React.FC = () => {
         );
         return (
           <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow flex flex-col">
-            {shouldShowTrialBanner && (
+            {shouldShowTrialWarning && (
+                 <div className="max-w-3xl mx-auto w-full p-4 mb-6 bg-orange-100 dark:bg-orange-900/40 rounded-lg border border-orange-200 dark:border-orange-800/60 text-center animate-fade-in">
+                    <p className="font-semibold text-orange-800 dark:text-orange-200">
+                        Aviso do Período de Teste
+                    </p>
+                    <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
+                        {trialDaysRemaining > 1 ? `O seu período de teste termina em ${trialDaysRemaining} dias.` : 'O seu período de teste termina hoje!'} Considere fazer um upgrade para manter o acesso.
+                    </p>
+                    <a href="#/plans" className="inline-block mt-3 px-4 py-1.5 text-sm font-bold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
+                        Ver Planos
+                    </a>
+                </div>
+            )}
+            {shouldShowTrialExpiredBanner && (
                 <div className="max-w-3xl mx-auto w-full p-4 mb-6 bg-yellow-100 dark:bg-yellow-900/40 rounded-lg border border-yellow-200 dark:border-yellow-800/60 text-center animate-fade-in">
                     <p className="font-semibold text-yellow-800 dark:text-yellow-200">
                         O seu período de teste gratuito terminou.
