@@ -25,6 +25,8 @@ import { PlansPage } from './components/PlansPage';
 import { useAuth } from './contexts/AuthContext';
 import { GoogleDrivePicker } from './components/GoogleDrivePicker';
 import type { Theme, PreferredLanguage, AudioRecording, AudioFile, Transcription } from './types';
+import { TranscriptionDetailPage } from './components/TranscriptionDetailPage';
+import { ProcessingLogOverlay } from './components/ProcessingLogOverlay';
 
 
 type ProcessStage = 'idle' | 'transcribing' | 'cleaning' | 'completed';
@@ -127,9 +129,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ isOpen, onClose }) => {
     const handleResultClick = (result: SearchResult) => {
         onClose();
         setSearchTerm(''); // Reset for next time
-        // Since we only have transcriptions, no switch is needed.
-        sessionStorage.setItem('highlightTranscriptionId', result.item.id);
-        window.location.hash = '#/history';
+        window.location.hash = `#/transcription/${result.item.id}`;
     };
     
     const inputRef = React.useRef<HTMLInputElement>(null);
@@ -220,6 +220,31 @@ const FeatureLockedPage: React.FC<{featureName: string, requiredPlan: string}> =
     </main>
 );
 
+const uploadAndLinkAudio = async (transcriptionId: string, audioFile: File, userId: string) => {
+    try {
+      const savedAudioFile = await addAudioFile({
+        name: audioFile.name,
+        audioBlob: audioFile,
+      }, userId);
+  
+      await updateTranscription(transcriptionId, {
+        audio_id: savedAudioFile.id,
+      });
+    } catch (err) {
+      console.error("Background audio upload/linking failed:", getFriendlyErrorMessage(err));
+      // Add a non-destructive error message to the cleaned transcript for user visibility.
+      try {
+        const existingTranscription = await getTranscriptionById(transcriptionId);
+        if (existingTranscription) {
+            await updateTranscription(transcriptionId, {
+                cleaned_transcript: `<p><strong>FALHA NO UPLOAD DO ÁUDIO:</strong> O ficheiro de áudio original não pôde ser guardado. A transcrição de texto foi guardada com sucesso.</p>${existingTranscription.cleaned_transcript || ''}`
+            });
+        }
+      } catch (updateErr) {
+          console.error("Failed to update transcription with upload error message:", updateErr);
+      }
+    }
+};
 
 const App: React.FC = () => {
   const { session, profile, loading, signOut, updateProfilePreferences } = useAuth();
@@ -266,6 +291,9 @@ const App: React.FC = () => {
   // State for manual saving logic
   const [isSaving, setIsSaving] = useState(false);
   const [transcriptionToUpdateId, setTranscriptionToUpdateId] = useState<string | null>(null);
+
+  // State for processing log overlay
+  const [processingLog, setProcessingLog] = useState<{ steps: string[], currentStep: number } | null>(null);
 
   const isEffectivelyDark = theme === 'dark';
 
@@ -491,6 +519,7 @@ const App: React.FC = () => {
     setAdvancedTranscript('');
     setAdvancedTranscriptTitle('');
     setIsSaving(false);
+    setProcessingLog(null);
   }, [audioUrl, handleCloseNowPlaying]);
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -564,35 +593,75 @@ const App: React.FC = () => {
   };
 
   const handleTranscribeFromRecordings = async (audio: AudioRecording) => {
+    const steps = [
+        'A carregar o seu ficheiro de áudio...',
+        'A preparar o ambiente de transcrição...',
+        'A analisar o idioma do áudio...',
+        'A finalizar e a redirecionar...'
+    ];
+
+    setProcessingLog({ steps, currentStep: 0 }); // Show log, step 1
+    
+    // Step 1: Prepare the file object
     const file = new File([audio.audioBlob], audio.name, {
       type: audio.audioBlob.type || 'audio/wav',
     });
-  
-    handleReset();
+    
+    // Step 2: Clear old state and prepare for new transcription
+    await new Promise(resolve => setTimeout(resolve, 500)); // UX delay
+    setProcessingLog(prev => prev ? { ...prev, currentStep: 1 } : null); // Show log, step 2
+
+    // This is a manual reset, to avoid clearing the processing log state
+    if (audioUrl) { URL.revokeObjectURL(audioUrl); }
+    setRawTranscript('');
+    setCleanedTranscript('');
+    setError(null);
+    setProcessStage('idle');
+    setFileInputKey(Date.now());
+    setEstimatedTime(null);
+    setPrecisionPotential(null);
+    setInitialPrecision(null);
+    setExpandedTranscript('none');
+    setFileSelectionSuccess(true); // Setting this now
+    setOutputPreference('both');
+    setCurrentTranscriptionId(null);
+    setTranscriptionToUpdateId(null);
+    setAudioDuration(0);
+    setProcessingTime(null);
+    setDetectedLanguage(null);
+    setIsDetectingLanguage(false);
+    handleCloseNowPlaying();
+    setIsRefineModalOpen(false);
+    setIsRefining(false);
+    setAdvancedTranscript('');
+    setAdvancedTranscriptTitle('');
+    setIsSaving(false);
+    
+    // Now set the new file state
     setAudioFile(file);
     setAudioUrl(URL.createObjectURL(file));
-    setFileSelectionSuccess(true);
     setCurrentAudioId(audio.id);
     
-    // Find if there's an existing transcription to update later
     try {
         const existingTranscription = await getTranscriptionByAudioId(audio.id);
         if (existingTranscription) {
             setTranscriptionToUpdateId(existingTranscription.id);
         }
-    } catch (e) {
-        console.error("Could not fetch existing transcription for update", e);
-    }
+    } catch (e) { console.error("Could not fetch existing transcription for update", e); }
 
+    // Step 3: Detect language and metadata
+    await new Promise(resolve => setTimeout(resolve, 500)); // UX delay
+    setProcessingLog(prev => prev ? { ...prev, currentStep: 2 } : null); // Show log, step 3
+    
     setIsDetectingLanguage(true);
-    setDetectedLanguage(null);
+    let langDetectionError: string | null = null;
     try {
         const audioBase64 = await blobToBase64(file);
         const lang = await detectLanguage(audioBase64, file.type);
         setDetectedLanguage(lang);
     } catch (err) {
         console.error('Error detecting language:', err);
-        setError("Não foi possível detetar o idioma do áudio.");
+        langDetectionError = "Não foi possível detetar o idioma do áudio.";
         setDetectedLanguage("Indeterminate");
     } finally {
         setIsDetectingLanguage(false);
@@ -612,8 +681,18 @@ const App: React.FC = () => {
         setEstimatedTime(null);
         setInitialPrecision(null);
     }
-  
+
+    if (langDetectionError) {
+        setError(langDetectionError);
+    }
+
+    // Step 4: Finalize and redirect
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Longer delay before redirect
+    setProcessingLog(prev => prev ? { ...prev, currentStep: 3 } : null); // Show log, step 4
+    
+    await new Promise(resolve => setTimeout(resolve, 500));
     window.location.hash = '#/home';
+    setProcessingLog(null); // Hide after navigation is triggered
   };
 
   const handlePlayAudio = (audio: AudioRecording) => {
@@ -714,32 +793,32 @@ const App: React.FC = () => {
 
     try {
         if (transcriptionToUpdateId) {
-            // Update existing transcription
+            // This is an update, so the audio file already exists.
+            // This operation should be fast as it's just text.
             await updateTranscription(transcriptionToUpdateId, {
                 raw_transcript: rawTranscript,
                 cleaned_transcript: cleanedTranscript,
                 original_language: detectedLanguage,
                 filename: audioFile.name,
             });
-            setCurrentTranscriptionId(transcriptionToUpdateId); // Mark as saved
+            setCurrentTranscriptionId(transcriptionToUpdateId);
         } else {
-            // Create new audio file and transcription
-            const savedAudioFile = await addAudioFile({
-                name: audioFile.name,
-                audioBlob: audioFile,
-            }, profile.id);
-            
+            // This is a new transcription. This is the part to optimize.
+            // 1. Optimistically save text data for a snappy UI response.
             const newTranscription = await addTranscription({
                 filename: audioFile.name,
                 raw_transcript: rawTranscript,
                 cleaned_transcript: cleanedTranscript,
-                audio_id: savedAudioFile.id,
+                audio_id: null, // Temporarily null
                 user_id: profile.id,
                 original_language: detectedLanguage,
             });
             
-            setCurrentAudioId(savedAudioFile.id);
+            // 2. Update UI immediately.
             setCurrentTranscriptionId(newTranscription.id);
+            
+            // 3. Start background audio upload and linking. This is not awaited.
+            uploadAndLinkAudio(newTranscription.id, audioFile, profile.id);
         }
     } catch (err) {
         setError(getFriendlyErrorMessage(err));
@@ -796,8 +875,7 @@ const App: React.FC = () => {
   };
 
   const handleHistoryClick = (transcriptionId: string) => {
-    sessionStorage.setItem('highlightTranscriptionId', transcriptionId);
-    window.location.hash = '#/history';
+    window.location.hash = `#/transcription/${transcriptionId}`;
   };
 
   const isProcessing = processStage === 'transcribing' || processStage === 'cleaning';
@@ -825,8 +903,9 @@ const App: React.FC = () => {
 
     // From here, we know the user is authenticated.
     const shouldShowTrialBanner = isFeatureLocked;
+    const urlParts = page.split('/');
 
-    switch (page) {
+    switch (urlParts[0]) {
       case 'profile':
         return <ProfilePage />;
       case 'history':
@@ -845,6 +924,13 @@ const App: React.FC = () => {
         return <TranslationsPage />;
       case 'plans':
         return <PlansPage />;
+      case 'transcription':
+          if (urlParts[1]) {
+              return <TranscriptionDetailPage transcriptionId={urlParts[1]} onEdit={loadTranscriptionForEditing} />;
+          }
+          // Fallback to home if no ID
+          window.location.hash = '#/home';
+          return null;
       case 'home':
       default:
         const recentHistorySection = (
@@ -1199,6 +1285,7 @@ const App: React.FC = () => {
 
   return (
     <>
+      {processingLog && <ProcessingLogOverlay steps={processingLog.steps} currentStep={processingLog.currentStep} />}
       <div className={`min-h-screen flex flex-col transition-opacity duration-500 ease-in-out ${isAppVisible ? 'opacity-100' : 'opacity-0'} ${nowPlaying ? 'pb-24 sm:pb-20' : ''}`}>
         {session && currentUser && (
           <Header 

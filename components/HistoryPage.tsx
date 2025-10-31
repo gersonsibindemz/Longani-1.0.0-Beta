@@ -156,6 +156,10 @@ export const HistoryPage: React.FC = () => {
         }
     };
 
+    const handleViewDetails = (id: string) => {
+        window.location.hash = `#/transcription/${id}`;
+    };
+
     const handleEdit = (id: string) => {
         sessionStorage.setItem('loadTranscriptionId', id);
         window.location.hash = '#/home';
@@ -174,15 +178,15 @@ export const HistoryPage: React.FC = () => {
             ) : (
                 <ul className="bg-white/60 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-200 dark:divide-gray-700">
                     {data.map((item) => (
-                        <li key={item.id} className={`flex items-center justify-between p-4 ${highlightId === item.id ? 'animate-highlight-flash' : ''}`}>
-                            <div className="flex-1 min-w-0">
+                        <li key={item.id} className={`flex items-center justify-between p-4 transition-colors hover:bg-gray-50 dark:hover:bg-gray-900/40 ${highlightId === item.id ? 'animate-highlight-flash' : ''}`}>
+                            <div className="flex-1 min-w-0 cursor-pointer" onClick={() => handleViewDetails(item.id)}>
                                 <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{item.filename}</p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
                                     {new Date(item.created_at).toLocaleString('pt-PT')}
                                     {item.team_id && item.shared_by_name && <span className="ml-2"> (Partilhado por {item.shared_by_name})</span>}
                                 </p>
                             </div>
-                            <div className="flex items-center gap-2 ml-4">
+                            <div className="flex items-center gap-2 ml-4" onClick={e => e.stopPropagation()}>
                                 {isTranslating === item.id && <Loader className="w-5 h-5 text-cyan-500" />}
                                 <button onClick={() => handleToggleFavorite(item)} className="p-2 text-gray-400 hover:text-yellow-500">
                                     {item.is_favorite ? <StarIcon className="w-5 h-5 text-yellow-400" /> : <StarOutlineIcon className="w-5 h-5" />}
@@ -190,7 +194,8 @@ export const HistoryPage: React.FC = () => {
                                 <DropdownMenu
                                     trigger={<button className="p-2 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"><MoreVerticalIcon className="w-5 h-5"/></button>}
                                     options={[
-                                        { label: 'Editar', icon: <EditIcon className="w-4 h-4" />, onClick: () => handleEdit(item.id) },
+                                        { label: 'Ver Detalhes', icon: <EditIcon className="w-4 h-4" />, onClick: () => handleViewDetails(item.id) },
+                                        { label: 'Editar no Início', icon: <EditIcon className="w-4 h-4" />, onClick: () => handleEdit(item.id) },
                                         { label: 'Renomear', icon: <EditIcon className="w-4 h-4" />, onClick: () => setItemToRename(item) },
                                         { label: 'Traduzir (Inglês)', icon: <TranslateIcon className="w-4 h-4" />, onClick: () => handleTranslate(item), disabled: !item.cleaned_transcript },
                                         team ? (item.team_id ? 

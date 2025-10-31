@@ -189,6 +189,16 @@ export const getAllSavedTranslations = async (): Promise<Translation[]> => {
     return data || [];
 };
 
+export const getTranslationsByTranscriptionId = async (transcriptionId: string): Promise<Translation[]> => {
+    const { data, error } = await supabase
+        .from('translations')
+        .select('*')
+        .eq('transcription_id', transcriptionId)
+        .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data || [];
+};
+
 export const deleteTranslation = async (id: string): Promise<void> => {
     const { error } = await supabase.from('translations').delete().eq('id', id);
     if (error) throw error;

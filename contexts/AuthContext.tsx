@@ -28,41 +28,49 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   useEffect(() => {
     const getSessionAndProfile = async () => {
-      const { data } = await supabase.auth.getSession();
-      const currentSession = data.session ?? null;
-      setSession(currentSession);
-      setUser(currentSession?.user ?? null);
+      try {
+        const { data } = await supabase.auth.getSession();
+        const currentSession = data.session ?? null;
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
 
-      if (currentSession?.user) {
-        const { data: profileData, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', currentSession.user.id)
-          .single();
-        if (!error) setProfile(profileData ?? null);
+        if (currentSession?.user) {
+          const { data: profileData, error } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', currentSession.user.id)
+            .single();
+          // PGRST116 means no rows found, which is not a critical error on initial load.
+          // The auth listener will handle profile creation if needed.
+          if (error && error.code !== 'PGRST116') {
+            console.error('Error fetching initial profile:', error);
+          }
+          setProfile(profileData ?? null);
+        }
+      } catch (e) {
+        console.error('An unexpected error occurred during initial session check:', e);
+      } finally {
+        // This ensures the loading spinner is always removed, fixing the infinite load on refresh.
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     getSessionAndProfile();
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (_event, newSession) => {
+      async (event, newSession) => {
         setSession(newSession);
         const newAuthUser = newSession?.user ?? null;
         setUser(newAuthUser);
 
         if (newAuthUser) {
-          // tenta buscar profile existente
           const { data: profileData, error: selectError } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', newAuthUser.id)
             .single();
 
-          // Se não existir e usuário tem sessão (autenticado), podemos criar com segurança
           if (!profileData) {
-            // tenta criar; se RLS bloquear, então é porque o usuário não está autenticado/authorize – tratar sem quebrar app
             try {
               const { data: newProfile, error: insertError } = await supabase
                 .from('profiles')
@@ -74,13 +82,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 .single();
 
               if (insertError) {
-                console.warn('Não foi possível inserir profile via client (pode já existir ou RLS bloquear):', insertError);
-                // não forçamos signout — confiaremos no trigger do DB (que deve criar o perfil)
+                console.warn('Could not insert profile via client (may already exist or RLS blocking):', insertError);
               } else {
                 setProfile(newProfile as Profile);
               }
             } catch (e) {
-              console.warn('Erro ao inserir profile (capturado):', e);
+              console.warn('Error inserting profile (caught):', e);
             }
           } else {
             setProfile(profileData as Profile);
@@ -91,7 +98,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           }
         } else {
           setProfile(null);
-          if (!window.location.hash.startsWith('#/login') && !window.location.hash.startsWith('#/signup')) {
+          // Only redirect if the user explicitly signed out.
+          // This prevents redirection on initial page load before the session is restored.
+          if (event === 'SIGNED_OUT') {
             window.location.hash = '#/login';
           }
         }
