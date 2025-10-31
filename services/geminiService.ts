@@ -177,7 +177,7 @@ export async function detectLanguage(audioBase64: string, audioMimeType: string)
     try {
         const response = await ai.models.generateContent({
             model: 'gemini-2.5-flash',
-            contents: { parts: [audioPart, { text: prompt }] },
+            contents: [{ parts: [audioPart, { text: prompt }] }],
             config: {
                 temperature: 0,
                 thinkingConfig: { thinkingBudget: 0 }
@@ -205,7 +205,7 @@ export function transcribeAudio(audioBase64: string, audioMimeType: string): Asy
 
     const request: GenerateContentParameters = {
         model: 'gemini-2.5-flash',
-        contents: { parts: [audioPart, { text: transcribePrompt }] },
+        contents: [{ parts: [audioPart, { text: transcribePrompt }] }],
         config: {
             temperature: 0.1, // Lower temperature for more deterministic, literal transcription
             thinkingConfig: { thinkingBudget: 0 } // Disable thinking for faster, direct transcription
@@ -224,7 +224,7 @@ export function cleanTranscript(rawTranscript: string, detectedLanguages: string
     const prompt = cleanPromptTemplate(rawTranscript, detectedLanguages, targetLanguageName);
     const request: GenerateContentParameters = {
         model: 'gemini-2.5-flash',
-        contents: { parts: [{ text: prompt }] },
+        contents: [{ parts: [{ text: prompt }] }],
         config: {
             temperature: 0.5, // Allow for some creativity in formatting
         }
@@ -243,7 +243,7 @@ export function translateText(textToTranslate: string, targetLanguage: 'en'): As
 
     const request: GenerateContentParameters = {
         model: 'gemini-2.5-flash',
-        contents: { parts: [{ text: prompt }] },
+        contents: [{ parts: [{ text: prompt }] }],
         config: {
             temperature: 0.5, // Increased temperature to allow for more natural, less literal phrasing.
         }
@@ -261,7 +261,7 @@ export function refineTranscript(rawTranscript: string, contentType: RefineConte
   
   const request: GenerateContentParameters = {
       model: 'gemini-2.5-flash',
-      contents: { parts: [{ text: prompt }] },
+      contents: [{ parts: [{ text: prompt }] }],
       config: {
           temperature: 0.6, // Allow more creativity for structuring
       }
