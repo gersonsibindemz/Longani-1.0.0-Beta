@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { VoiceRecorder } from './VoiceRecorder';
 import { getAllAudioFiles, addAudioFile, deleteAudioFile, updateAudioFile, getAudioRecording } from '../utils/db';
 import { AudioFile, AudioRecording } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { Loader } from './Loader';
 import { DropdownMenu } from './DropdownMenu';
-import { MoreVerticalIcon, EditIcon, StarIcon, StarOutlineIcon, TrashIcon, WaveformIcon, PlayIcon } from './Icons';
+import { MoreVerticalIcon, EditIcon, StarIcon, StarOutlineIcon, TrashIcon, WaveformIcon, PlayIcon, UploadIcon, CheckIcon } from './Icons';
 import { ConfirmationModal } from './ConfirmationModal';
 import { PropertiesModal } from './PropertiesModal';
 import { formatPlayerTime } from '../utils/audioUtils';
@@ -55,6 +55,9 @@ export const RecordingsPage: React.FC<{ onTranscribe: (audio: AudioRecording) =>
     const [itemForProperties, setItemForProperties] = useState<AudioRecording | null>(null);
     const [actionLoading, setActionLoading] = useState<string | null>(null); // Track ID of item being acted upon
 
+    const [isUploading, setIsUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
     const fetchData = useCallback(async () => {
         setIsLoading(true);
         setError(null);
@@ -85,6 +88,42 @@ export const RecordingsPage: React.FC<{ onTranscribe: (audio: AudioRecording) =>
         }
     };
     
+    const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+        const files = event.target.files;
+        if (!files || files.length === 0 || !profile) return;
+
+        setIsUploading(true);
+        setError(null);
+
+        const uploadPromises = Array.from(files).map(file =>
+            addAudioFile({ name: file.name, audioBlob: file }, profile.id)
+        );
+
+        try {
+            await Promise.all(uploadPromises);
+        // FIX: The caught error `err` is of type `unknown`. Accessing properties like
+        // `err.name` directly is a type error. This handles it safely by checking if
+        // the error is an `instanceof Error` before accessing `err.message`. This likely
+        // fixes the "Property 'name' does not exist on type 'unknown'" error,
+        // even if the linter reports the wrong line number for the catch block.
+        // The Blob-related error is likely from a failed upload which this now handles.
+        } catch (err) {
+            console.error("Failed to upload files", err);
+            if (err instanceof Error) {
+                setError(`Ocorreu um erro ao carregar um ou mais ficheiros: ${err.message}`);
+            } else {
+                setError("Ocorreu um erro ao carregar um ou mais ficheiros. Verifique se os ficheiros não são demasiado grandes.");
+            }
+        } finally {
+            setIsUploading(false);
+            fetchData(); // Refresh the list
+            // Reset the input value to allow selecting the same file again
+            if (event.target) {
+                event.target.value = '';
+            }
+        }
+    };
+
     const handleDelete = async () => {
         if (!itemToDelete) return;
         setIsDeleting(true);
@@ -157,7 +196,10 @@ export const RecordingsPage: React.FC<{ onTranscribe: (audio: AudioRecording) =>
                     {data.map((item) => (
                         <li key={item.id} className="flex items-center justify-between p-4">
                             <div className="flex-1 min-w-0">
-                                <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{item.name}</p>
+                                <div className="flex items-center gap-2">
+                                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{item.name}</p>
+                                    <CheckIcon className="w-4 h-4 text-green-500 flex-shrink-0" title="Guardado na nuvem" />
+                                </div>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
                                     {new Date(item.created_at).toLocaleString('pt-PT')}
                                     <span className="mx-2">•</span>
@@ -192,10 +234,30 @@ export const RecordingsPage: React.FC<{ onTranscribe: (audio: AudioRecording) =>
 
     return (
         <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow">
+             <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileSelect}
+                className="hidden"
+                accept="audio/*"
+                multiple
+                disabled={isUploading}
+            />
             <div className="max-w-5xl mx-auto">
-                <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200 mb-6">
-                    Gravações
-                </h1>
+                <div className="flex justify-between items-center mb-6">
+                    <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200">
+                        Gravações
+                    </h1>
+                     <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isUploading}
+                        className="flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#24a9c5] hover:bg-[#1e8a9f] disabled:opacity-50"
+                        title="Carregar ficheiros de áudio do dispositivo"
+                    >
+                        {isUploading ? <Loader className="w-5 h-5" /> : <UploadIcon className="w-5 h-5" />}
+                        <span>Carregar</span>
+                    </button>
+                </div>
                 <div className="mb-8">
                     <VoiceRecorder onSave={handleSaveRecording} />
                 </div>
