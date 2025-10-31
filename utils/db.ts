@@ -36,6 +36,16 @@ export const getTranscriptionById = async (id: string): Promise<Transcription | 
     return data;
 };
 
+export const getTranscriptionByAudioId = async (audioId: string): Promise<Transcription | null> => {
+    const { data, error } = await supabase
+        .from('transcriptions')
+        .select('*')
+        .eq('audio_id', audioId)
+        .maybeSingle(); // Use maybeSingle to handle 0 or 1 result without error
+    if (error) throw error;
+    return data;
+};
+
 export const updateTranscription = async (id: string, updates: Partial<Transcription>): Promise<void> => {
     const { error } = await supabase
         .from('transcriptions')

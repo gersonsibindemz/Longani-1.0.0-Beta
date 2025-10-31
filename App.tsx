@@ -5,11 +5,11 @@ import { FileUpload } from './components/FileUpload';
 import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { ProgressBar } from './components/ProgressBar';
 import { Loader } from './components/Loader';
-import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon, SearchIcon, WaveformIcon, TranslateIcon, UsersIcon } from './components/Icons';
+import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon, SearchIcon, WaveformIcon, TranslateIcon, UsersIcon, SaveIcon, CheckIcon } from './components/Icons';
 import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, formatProcessingTime, translateLanguageName, isTrialActive, calculateMonthlyUsage } from './utils/audioUtils';
 import { HistoryPage } from './components/HistoryPage';
 import { RecordingsPage } from './components/RecordingsPage';
-import { addTranscription, addAudioFile, getAllTranscriptions, getTranscriptionById, getAudioRecording, updateTranscription, deleteTranscription, getAudioFilesForCurrentMonth } from './utils/db';
+import { addTranscription, addAudioFile, getAllTranscriptions, getTranscriptionById, getAudioRecording, updateTranscription, deleteTranscription, getAudioFilesForCurrentMonth, getTranscriptionByAudioId } from './utils/db';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FavoritesPage } from './components/FavoritesPage';
 import { TranslationsPage } from './components/TranslationsPage';
@@ -263,6 +263,10 @@ const App: React.FC = () => {
   const [advancedTranscript, setAdvancedTranscript] = useState<string>('');
   const [advancedTranscriptTitle, setAdvancedTranscriptTitle] = useState<string>('');
 
+  // State for manual saving logic
+  const [isSaving, setIsSaving] = useState(false);
+  const [transcriptionToUpdateId, setTranscriptionToUpdateId] = useState<string | null>(null);
+
   const isEffectivelyDark = theme === 'dark';
 
   const MAX_FILE_SIZE_MB = 100;
@@ -475,6 +479,7 @@ const App: React.FC = () => {
     setOutputPreference('both');
     setCurrentAudioId(null);
     setCurrentTranscriptionId(null);
+    setTranscriptionToUpdateId(null);
     setAudioDuration(0);
     setProcessingTime(null);
     setDetectedLanguage(null);
@@ -485,6 +490,7 @@ const App: React.FC = () => {
     setIsRefining(false);
     setAdvancedTranscript('');
     setAdvancedTranscriptTitle('');
+    setIsSaving(false);
   }, [audioUrl, handleCloseNowPlaying]);
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -568,6 +574,16 @@ const App: React.FC = () => {
     setFileSelectionSuccess(true);
     setCurrentAudioId(audio.id);
     
+    // Find if there's an existing transcription to update later
+    try {
+        const existingTranscription = await getTranscriptionByAudioId(audio.id);
+        if (existingTranscription) {
+            setTranscriptionToUpdateId(existingTranscription.id);
+        }
+    } catch (e) {
+        console.error("Could not fetch existing transcription for update", e);
+    }
+
     setIsDetectingLanguage(true);
     setDetectedLanguage(null);
     try {
@@ -616,9 +632,7 @@ const App: React.FC = () => {
     const isFeatureLocked = currentUser?.plan === 'trial' && trialHasExpired;
 
   const handleProcessAudio = useCallback(async () => {
-    const audioToProcess = audioFile;
-
-    if (!audioFile || !audioToProcess || !currentUser) {
+    if (!audioFile || !currentUser) {
       setError('Por favor, selecione um ficheiro de áudio e inicie a sessão para processar.');
       return;
     }
@@ -632,9 +646,6 @@ const App: React.FC = () => {
         return;
     }
     
-    // Usage check logic removed from here as it's now handled by the useEffect hook and displayed in the header.
-    // The Gemini API call will fail if the user is over quota, and the error will be caught.
-    
     if (!detectedLanguage) {
         setError("O idioma do áudio ainda não foi detetado. Por favor, aguarde ou recarregue o ficheiro.");
         return;
@@ -642,49 +653,28 @@ const App: React.FC = () => {
 
     handleCloseNowPlaying();
   
-    const transcriptionId = `longani-job-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    // Reset previous results, but keep IDs for saving later
     setError(null);
-    let fullRawTranscript = '';
-    let finalHtml = '';
     setRawTranscript('');
     setCleanedTranscript('');
-
-    const startTime = Date.now();
+    setAdvancedTranscript('');
+    setAdvancedTranscriptTitle('');
     setProcessingTime(null);
+    
+    const startTime = Date.now();
   
     try {
-      let audioId = currentAudioId;
-      if (!audioId) {
-        const savedAudioFile = await addAudioFile({
-          name: audioFile.name,
-          audioBlob: audioFile,
-        }, currentUser.id);
-        audioId = savedAudioFile.id;
-        setCurrentAudioId(savedAudioFile.id);
-      } else {
-        const oldTranscription = (await getAllTranscriptions()).find(t => t.audio_id === audioId);
-        if (oldTranscription) {
-            await deleteTranscription(oldTranscription.id);
-        }
-      }
-
-      const audioBase64 = await blobToBase64(audioToProcess);
-      const audioMimeType = audioToProcess.type;
-  
-      const BATCH_UPDATE_INTERVAL = 100;
+      const audioBase64 = await blobToBase64(audioFile);
+      const audioMimeType = audioFile.type;
   
       setProcessStage('transcribing');
-      let lastRawUpdate = 0;
+      let fullRawTranscript = '';
       for await (const chunk of transcribeAudio(audioBase64, audioMimeType)) {
         fullRawTranscript += chunk;
-        const now = Date.now();
-        if (now - lastRawUpdate > BATCH_UPDATE_INTERVAL) {
-          setRawTranscript(fullRawTranscript);
-          if (initialPrecision !== null) {
-              const dynamicPrecision = calculateDynamicPrecision(fullRawTranscript, initialPrecision);
-              setPrecisionPotential(dynamicPrecision);
-          }
-          lastRawUpdate = now;
+        setRawTranscript(fullRawTranscript);
+        if (initialPrecision !== null) {
+            const dynamicPrecision = calculateDynamicPrecision(fullRawTranscript, initialPrecision);
+            setPrecisionPotential(dynamicPrecision);
         }
       }
       setRawTranscript(fullRawTranscript);
@@ -696,13 +686,12 @@ const App: React.FC = () => {
 
       if (fullRawTranscript.trim()) {
         setProcessStage('cleaning');
-        let cleanedHtml = '';
+        let finalHtml = '';
         const targetLanguageName = languageMap[preferredLanguage];
         for await (const chunk of cleanTranscript(fullRawTranscript, detectedLanguage, targetLanguageName)) {
-          cleanedHtml += chunk;
-          setCleanedTranscript(cleanedHtml);
+          finalHtml += chunk;
+          setCleanedTranscript(finalHtml);
         }
-        finalHtml = cleanedHtml;
       } else {
         setCleanedTranscript('');
       }
@@ -710,26 +699,54 @@ const App: React.FC = () => {
       setProcessStage('completed');
       const endTime = Date.now();
       setProcessingTime(formatProcessingTime(endTime - startTime));
-
-      if (audioFile) {
-        await addTranscription({
-          id: transcriptionId,
-          filename: audioFile.name,
-          raw_transcript: fullRawTranscript,
-          cleaned_transcript: finalHtml,
-          audio_id: audioId,
-          user_id: currentUser.id,
-          original_language: detectedLanguage,
-        });
-        setCurrentTranscriptionId(transcriptionId);
-      }
-  
     } catch (err) {
-      const friendlyMessage = getFriendlyErrorMessage(err, transcriptionId);
+      const friendlyMessage = getFriendlyErrorMessage(err);
       setError(friendlyMessage);
       setProcessStage('idle');
     }
-  }, [audioFile, initialPrecision, currentAudioId, handleCloseNowPlaying, preferredLanguage, audioDuration, detectedLanguage, currentUser, isFeatureLocked]);
+  }, [audioFile, initialPrecision, handleCloseNowPlaying, preferredLanguage, detectedLanguage, currentUser, isFeatureLocked]);
+
+  const handleSaveTranscription = async () => {
+    if (!audioFile || !profile || isSaving) return;
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+        if (transcriptionToUpdateId) {
+            // Update existing transcription
+            await updateTranscription(transcriptionToUpdateId, {
+                raw_transcript: rawTranscript,
+                cleaned_transcript: cleanedTranscript,
+                original_language: detectedLanguage,
+                filename: audioFile.name,
+            });
+            setCurrentTranscriptionId(transcriptionToUpdateId); // Mark as saved
+        } else {
+            // Create new audio file and transcription
+            const savedAudioFile = await addAudioFile({
+                name: audioFile.name,
+                audioBlob: audioFile,
+            }, profile.id);
+            
+            const newTranscription = await addTranscription({
+                filename: audioFile.name,
+                raw_transcript: rawTranscript,
+                cleaned_transcript: cleanedTranscript,
+                audio_id: savedAudioFile.id,
+                user_id: profile.id,
+                original_language: detectedLanguage,
+            });
+            
+            setCurrentAudioId(savedAudioFile.id);
+            setCurrentTranscriptionId(newTranscription.id);
+        }
+    } catch (err) {
+        setError(getFriendlyErrorMessage(err));
+    } finally {
+        setIsSaving(false);
+    }
+  };
 
   const handleRefine = async (contentType: RefineContentType, outputFormat: RefineOutputFormat) => {
     if (!rawTranscript) {
@@ -1116,7 +1133,24 @@ const App: React.FC = () => {
             )}
 
             {processStage === 'completed' && (
-                <div className="mt-12 text-center animate-fade-in-up">
+              <>
+                <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in-up">
+                    {(!currentTranscriptionId && rawTranscript) && (
+                        <button
+                            onClick={handleSaveTranscription}
+                            disabled={isSaving}
+                            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-green-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-green-700 transition-all disabled:bg-gray-400"
+                        >
+                            {isSaving ? <Loader className="w-5 h-5" /> : <SaveIcon className="w-5 h-5" />}
+                            <span>{isSaving ? 'A Guardar...' : 'Guardar Transcrição'}</span>
+                        </button>
+                    )}
+                    {currentTranscriptionId && (
+                        <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-semibold py-3 px-8 rounded-lg bg-green-100 dark:bg-green-900/50">
+                            <CheckIcon className="w-5 h-5" />
+                            <span>Guardado com Sucesso</span>
+                        </div>
+                    )}
                     <button
                         onClick={handleReset}
                         className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#24a9c5] text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-[#1e8a9f] transition-all"
@@ -1124,34 +1158,35 @@ const App: React.FC = () => {
                         <ReloadIcon className="w-5 h-5" />
                         <span>Transcrever Novo Ficheiro</span>
                     </button>
-                    <div className="mt-4">
-                        <button
-                            onClick={() => {
-                                if (isFeatureLocked) {
-                                    setError(<>O seu período de teste terminou. Por favor, <a href="#/plans" className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para aceder a esta funcionalidade.</>);
-                                    window.scrollTo(0, 0);
-                                    return;
-                                }
-                                
-                                const canAccessPremium = currentUser?.plan === 'premium' || (currentUser?.plan === 'trial' && !trialHasExpired);
-
-                                if (!canAccessPremium) {
-                                    setError(
-                                        <>
-                                            O Refinamento Avançado é uma funcionalidade exclusiva do plano Premium. <a href="#/plans" className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">Faça um upgrade</a> para aceder.
-                                        </>
-                                    );
-                                    window.scrollTo(0, 0);
-                                } else {
-                                    setIsRefineModalOpen(true);
-                                }
-                            }}
-                            className="font-bold text-[#24a9c5] hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-900 rounded-md p-1"
-                        >
-                            ou faça um Refinamento Avançado
-                        </button>
-                    </div>
                 </div>
+                <div className="mt-4 text-center">
+                    <button
+                        onClick={() => {
+                            if (isFeatureLocked) {
+                                setError(<>O seu período de teste terminou. Por favor, <a href="#/plans" className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para aceder a esta funcionalidade.</>);
+                                window.scrollTo(0, 0);
+                                return;
+                            }
+                            
+                            const canAccessPremium = currentUser?.plan === 'premium' || (currentUser?.plan === 'trial' && !trialHasExpired);
+
+                            if (!canAccessPremium) {
+                                setError(
+                                    <>
+                                        O Refinamento Avançado é uma funcionalidade exclusiva do plano Premium. <a href="#/plans" className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">Faça um upgrade</a> para aceder.
+                                    </>
+                                );
+                                window.scrollTo(0, 0);
+                            } else {
+                                setIsRefineModalOpen(true);
+                            }
+                        }}
+                        className="font-bold text-[#24a9c5] hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-900 rounded-md p-1"
+                    >
+                        ou faça um Refinamento Avançado
+                    </button>
+                </div>
+              </>
             )}
           </main>
         );
