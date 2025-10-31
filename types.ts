@@ -60,7 +60,7 @@ export type Database = {
           name: string
           photo_url: string | null
           plan: Database["public"]["Enums"]["plan_type"]
-          preferences: Json | null
+          preferences: Json
           team_id: string | null
         }
         Insert: {
@@ -69,7 +69,7 @@ export type Database = {
           name: string
           photo_url?: string | null
           plan?: Database["public"]["Enums"]["plan_type"]
-          preferences?: Json | null
+          preferences?: Json
           team_id?: string | null
         }
         Update: {
@@ -78,7 +78,7 @@ export type Database = {
           name?: string
           photo_url?: string | null
           plan?: Database["public"]["Enums"]["plan_type"]
-          preferences?: Json | null
+          preferences?: Json
           team_id?: string | null
         }
         Relationships: [
@@ -253,7 +253,6 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      // FIX: Added definition for the 'invite_user_to_team' RPC function to resolve type error.
       invite_user_to_team: {
         Args: {
           user_email: string

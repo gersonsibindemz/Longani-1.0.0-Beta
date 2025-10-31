@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getAllTranscriptions, getAllAudioFiles, updateTranscription, updateAudioFile, getAudioRecording } from '../utils/db';
 import { Transcription, AudioFile, AudioRecording } from '../types';
 import { Loader } from './Loader';
-// FIX: Added missing 'StarOutlineIcon' import.
 import { StarIcon, HistoryIcon, WaveformIcon, PlayIcon, StarOutlineIcon } from './Icons';
 
 type FavoriteItem = (Transcription & { type: 'transcription' }) | (AudioFile & { type: 'audio' });

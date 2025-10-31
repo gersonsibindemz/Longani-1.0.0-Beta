@@ -73,6 +73,11 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onFileImpo
     const [error, setError] = useState<string | null>(null);
     const tokenClientRef = useRef<any>(null);
 
+    // If the feature is not configured, do not render the button.
+    if (!GOOGLE_API_KEY || !GOOGLE_CLIENT_ID) {
+        return null;
+    }
+
     const createPicker = useCallback((accessToken: string) => {
         const view = new google.picker.DocsView(google.picker.ViewId.DOCS)
             .setIncludeFolders(false)
@@ -113,12 +118,6 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onFileImpo
 
     useEffect(() => {
         const initialize = async () => {
-            if (!GOOGLE_API_KEY || !GOOGLE_CLIENT_ID) {
-                setError('A funcionalidade do Google Drive não está configurada.');
-                setStatus('error');
-                return;
-            }
-    
             try {
                 await loadGoogleApiScripts();
                 
@@ -158,6 +157,12 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onFileImpo
         initialize();
     }, [createPicker]);
 
+    if (status === 'error') {
+        return (
+             <div className="w-full text-center text-sm text-red-600 dark:text-red-400">{error}</div>
+        );
+    }
+
     const handleImportClick = () => {
         if (tokenClientRef.current) {
             tokenClientRef.current.requestAccessToken({ prompt: '' });
@@ -165,13 +170,7 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onFileImpo
             setError('O cliente de autenticação não está pronto.');
         }
     };
-
-    if (status === 'error') {
-        return (
-             <div className="w-full text-center text-sm text-red-600 dark:text-red-400">{error}</div>
-        );
-    }
-
+    
     return (
         <button
             type="button"

@@ -61,9 +61,27 @@ export const deleteTranscription = async (id: string): Promise<void> => {
 
 // --- Audio File Functions ---
 
+// ADVICE: The 'audio_files' table and the 'audio_files' storage bucket currently have permissive RLS policies
+// allowing public access. This is a security risk. It's highly recommended to restrict access so users can only
+// manage their own audio files.
+//
+// Recommended RLS Policies for 'audio_files' table:
+// CREATE POLICY "Enable insert for authenticated users" ON public.audio_files FOR INSERT WITH CHECK (auth.uid() = user_id);
+// CREATE POLICY "Enable select for own audio files" ON public.audio_files FOR SELECT USING (auth.uid() = user_id);
+// CREATE POLICY "Enable update for own audio files" ON public.audio_files FOR UPDATE USING (auth.uid() = user_id);
+// CREATE POLICY "Enable delete for own audio files" ON public.audio_files FOR DELETE USING (auth.uid() = user_id);
+//
+// Recommended Storage Policies for 'audio_files' bucket:
+// CREATE POLICY "Allow user-specific folder access" ON storage.objects FOR ALL
+// USING (bucket_id = 'audio_files' AND auth.uid()::text = (storage.foldername(name))[1])
+// WITH CHECK (bucket_id = 'audio_files' AND auth.uid()::text = (storage.foldername(name))[1]);
+
 export const addAudioFile = async (audio: { name: string; audioBlob: Blob }, userId: string): Promise<AudioFile> => {
     const file = new File([audio.audioBlob], audio.name, { type: audio.audioBlob.type });
-    const storagePath = `${userId}/${Date.now()}-${file.name}`;
+    // Sanitize the file name for the storage path to prevent "Invalid key" errors.
+    // This replaces spaces and other problematic characters with underscores, making the path URL-safe.
+    const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9_.-]/g, '_');
+    const storagePath = `${userId}/${Date.now()}-${sanitizedFileName}`;
 
     const { error: uploadError } = await supabase.storage
         .from('audio_files')
@@ -137,6 +155,14 @@ export const deleteAudioFile = async (id: string): Promise<void> => {
 };
 
 // --- Translation Functions ---
+
+// ADVICE: The 'translations' table currently has a permissive RLS policy allowing public access.
+// For security, it's recommended to restrict access so users can only manage their own translations.
+// Example Policies:
+// CREATE POLICY "Enable insert for authenticated users" ON public.translations FOR INSERT WITH CHECK (auth.uid() = user_id);
+// CREATE POLICY "Enable select for own translations" ON public.translations FOR SELECT USING (auth.uid() = user_id);
+// CREATE POLICY "Enable update for own translations" ON public.translations FOR UPDATE USING (auth.uid() = user_id);
+// CREATE POLICY "Enable delete for own translations" ON public.translations FOR DELETE USING (auth.uid() = user_id);
 
 export const addTranslation = async (translation: Partial<Translation>): Promise<Translation> => {
     const { data, error } = await supabase.from('translations').insert(translation as any).select().single();

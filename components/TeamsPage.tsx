@@ -44,7 +44,6 @@ export const TeamsPage: React.FC = () => {
 
     useEffect(() => {
         fetchTeamData();
-    // FIX: Corrected typo from `fetchData` to `fetchTeamData` in the dependency array.
     }, [fetchTeamData]);
 
     const handleCreateTeam = async (e: React.FormEvent) => {
@@ -68,7 +67,6 @@ export const TeamsPage: React.FC = () => {
         setIsRemoving(true);
         try {
             await updateProfileTeamId(memberToRemove, null);
-            // FIX: Corrected typo from `fetchData` to `fetchTeamData`.
             fetchTeamData();
         } catch (err) {
              console.error(err);
@@ -98,7 +96,6 @@ export const TeamsPage: React.FC = () => {
             const result = await inviteUserToTeam(email, team.id);
             if (result.success) {
                 alert(result.message);
-                // FIX: Corrected typo from `fetchData` to `fetchTeamData`.
                 fetchTeamData(); // Refresh team data to show new member
                 setShowInviteModal(false);
             } else {

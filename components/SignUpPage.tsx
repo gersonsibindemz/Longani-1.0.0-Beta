@@ -9,6 +9,7 @@ export const SignUpPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,13 +32,24 @@ export const SignUpPage: React.FC = () => {
         return;
     }
 
+    if (!agreedToTerms) {
+        setError('Deve aceitar os Termos de Serviço para criar uma conta.');
+        return;
+    }
+
     setIsLoading(true);
 
     const { error: signUpError } = await signUp(email, password, username);
 
     if (signUpError) {
+        // Log the full error object for detailed debugging in the development console.
+        console.error("Supabase sign-up error:", signUpError);
+
         if (signUpError.message.includes('User already registered')) {
             setError('Este email já está registado. Tente fazer login.');
+        } else if (signUpError.message.includes('Database error')) {
+            // Provide a clearer message for the specific error the user is facing.
+            setError('Ocorreu um erro ao criar o seu perfil. Por favor, tente novamente mais tarde ou contacte o suporte.');
         } else {
             setError(signUpError.message);
         }
@@ -123,12 +135,31 @@ export const SignUpPage: React.FC = () => {
                 />
               </div>
             </div>
+            <div className="mt-6">
+                <div className="flex items-start">
+                  <div className="flex items-center h-5">
+                    <input
+                      id="terms"
+                      name="terms"
+                      type="checkbox"
+                      checked={agreedToTerms}
+                      onChange={(e) => setAgreedToTerms(e.target.checked)}
+                      className="focus:ring-[#24a9c5] h-4 w-4 text-[#24a9c5] border-gray-300 dark:border-gray-600 rounded"
+                    />
+                  </div>
+                  <div className="ml-3 text-sm">
+                    <label htmlFor="terms" className="text-gray-600 dark:text-gray-400">
+                      Eu aceito os <a href="#" onClick={(e) => e.preventDefault()} className="font-medium text-[#24a9c5] hover:underline">Termos de Serviço</a>.
+                    </label>
+                  </div>
+                </div>
+            </div>
             {error && <p className="mt-4 text-center text-sm text-red-600 dark:text-red-400">{error}</p>}
             <div className="mt-6">
               <button
                 type="submit"
-                disabled={isLoading}
-                className="w-full flex justify-center items-center gap-2 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#24a9c5] hover:bg-[#1e8a9f] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] disabled:bg-gray-400 dark:focus:ring-offset-gray-900 transition-colors"
+                disabled={isLoading || !agreedToTerms}
+                className="w-full flex justify-center items-center gap-2 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#24a9c5] hover:bg-[#1e8a9f] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] disabled:bg-gray-400 dark:focus:ring-offset-gray-900 transition-colors disabled:opacity-50"
               >
                 {isLoading ? <Loader className="w-5 h-5" /> : 'Criar Conta'}
               </button>

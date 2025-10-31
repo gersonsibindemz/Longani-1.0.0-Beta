@@ -23,7 +23,6 @@ import { TeamsPage } from './components/TeamsPage';
 import DesktopNotice from './components/DesktopNotice';
 import { PlansPage } from './components/PlansPage';
 import { useAuth } from './contexts/AuthContext';
-import { AwaitingConfirmationPage } from './components/AwaitingConfirmationPage';
 import { GoogleDrivePicker } from './components/GoogleDrivePicker';
 import type { Theme, PreferredLanguage, AudioRecording, AudioFile, Transcription } from './types';
 
@@ -223,7 +222,7 @@ const FeatureLockedPage: React.FC<{featureName: string, requiredPlan: string}> =
 
 
 const App: React.FC = () => {
-  const { session, profile, loading, signOut, updateProfilePreferences, isAwaitingConfirmation } = useAuth();
+  const { session, profile, loading, signOut, updateProfilePreferences } = useAuth();
   const currentUser = profile; // Use profile as the main user object for app logic
 
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -355,7 +354,15 @@ const App: React.FC = () => {
                 const usage = calculateMonthlyUsage(audioFiles);
                 setMonthlyUsage(usage);
             } catch (e) {
-                console.error("Failed to calculate monthly usage:", e);
+                let errorDetails = '';
+                if (e instanceof Error) {
+                    errorDetails = e.message;
+                } else if (e && typeof e === 'object' && 'message' in e) {
+                    errorDetails = String((e as { message: string }).message);
+                } else {
+                    errorDetails = String(e);
+                }
+                console.error(`Failed to calculate monthly usage. Details: ${errorDetails}`, e);
             }
         } else {
             setMonthlyUsage(0); // Reset if no user is logged in
@@ -793,8 +800,6 @@ const App: React.FC = () => {
         switch (page) {
             case 'signup':
                 return <SignUpPage />;
-            case 'awaiting-confirmation':
-                return <AwaitingConfirmationPage />;
             case 'login':
             default:
                 return <LoginPage />;
@@ -1155,10 +1160,6 @@ const App: React.FC = () => {
   
   if (showDesktopLock) {
     return <DesktopNotice />;
-  }
-  
-  if (isAwaitingConfirmation) {
-    return <AwaitingConfirmationPage />;
   }
 
   return (

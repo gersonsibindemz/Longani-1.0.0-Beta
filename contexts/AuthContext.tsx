@@ -8,7 +8,6 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  isAwaitingConfirmation: boolean;
   signIn: (email: string, pass: string) => Promise<{ error: any }>;
   signUp: (email: string, pass: string, name: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -26,21 +25,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAwaitingConfirmation, setIsAwaitingConfirmation] = useState(false);
 
   useEffect(() => {
     const getSessionAndProfile = async () => {
-      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      const { data } = await supabase.auth.getSession();
+      const currentSession = data.session ?? null;
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
 
       if (currentSession?.user) {
-        const { data: profileData } = await supabase
+        const { data: profileData, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', currentSession.user.id)
           .single();
-        setProfile(profileData);
+        if (!error) setProfile(profileData ?? null);
       }
       setLoading(false);
     };
@@ -54,24 +53,44 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         setUser(newAuthUser);
 
         if (newAuthUser) {
-          // If profile is already loaded and user is the same, don't re-fetch
-          if (profile?.id === newAuthUser.id) {
-            return;
-          }
-          const { data: profileData } = await supabase
+          // tenta buscar profile existente
+          const { data: profileData, error: selectError } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', newAuthUser.id)
             .single();
-          setProfile(profileData);
-          setIsAwaitingConfirmation(false); // User is confirmed and logged in
-          
+
+          // Se não existir e usuário tem sessão (autenticado), podemos criar com segurança
+          if (!profileData) {
+            // tenta criar; se RLS bloquear, então é porque o usuário não está autenticado/authorize – tratar sem quebrar app
+            try {
+              const { data: newProfile, error: insertError } = await supabase
+                .from('profiles')
+                .insert({
+                  id: newAuthUser.id,
+                  name: newAuthUser.user_metadata?.full_name ?? 'Novo Utilizador',
+                })
+                .select()
+                .single();
+
+              if (insertError) {
+                console.warn('Não foi possível inserir profile via client (pode já existir ou RLS bloquear):', insertError);
+                // não forçamos signout — confiaremos no trigger do DB (que deve criar o perfil)
+              } else {
+                setProfile(newProfile as Profile);
+              }
+            } catch (e) {
+              console.warn('Erro ao inserir profile (capturado):', e);
+            }
+          } else {
+            setProfile(profileData as Profile);
+          }
+
           if (window.location.hash.startsWith('#/awaiting-confirmation')) {
             window.location.hash = '#/home';
           }
         } else {
           setProfile(null);
-          // If we are logging out, don't stay on a protected page
           if (!window.location.hash.startsWith('#/login') && !window.location.hash.startsWith('#/signup')) {
             window.location.hash = '#/login';
           }
@@ -82,86 +101,86 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, [profile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const value = {
+  const value: AuthContextType = {
     session,
     user,
     profile,
     loading,
-    isAwaitingConfirmation,
+
     signIn: async (email: string, pass: string) => {
       const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
-      if (error?.message === 'Email not confirmed') {
-        setIsAwaitingConfirmation(true);
-        window.location.hash = '#/awaiting-confirmation';
-        return { error: null }; // Prevent showing an error on the login page
-      }
       return { error };
     },
+
     signUp: async (email: string, pass: string, name: string) => {
       const { data, error } = await supabase.auth.signUp({
         email,
         password: pass,
-        options: {
-          data: { name },
-        },
+        options: { data: { full_name: name } },
       });
+
       if (!error && data.user) {
-        setIsAwaitingConfirmation(true);
-        window.location.hash = '#/awaiting-confirmation';
+        window.location.hash = '#/login';
       }
+
       return { error };
     },
+
     signOut: async () => {
       await supabase.auth.signOut();
-      // The onAuthStateChange listener will handle redirects and state clearing
     },
+
     updateProfile: async (updates: Partial<Profile>) => {
-        if (!user) throw new Error("No user logged in");
-        const { data, error } = await supabase
-            .from('profiles')
-            .update(updates)
-            .eq('id', user.id)
-            .select()
-            .single();
+      if (!user) throw new Error('Nenhum utilizador autenticado');
+      const { data, error } = await supabase
+        .from('profiles')
+        .update(updates)
+        .eq('id', user.id)
+        .select()
+        .single();
 
-        if (error) throw error;
-        setProfile(data);
+      if (error) throw error;
+      setProfile(data);
     },
+
     uploadProfilePhoto: async (file: File) => {
-        if (!user) throw new Error("No user logged in");
+      if (!user) throw new Error('Nenhum utilizador autenticado');
 
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Math.random()}.${fileExt}`;
-        const filePath = `${user.id}/${fileName}`;
-        
-        const { error: uploadError } = await supabase.storage.from('profile_photos').upload(filePath, file);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
 
-        if (uploadError) throw uploadError;
+      const { error: uploadError } = await supabase.storage
+        .from('profile_photos')
+        .upload(filePath, file);
 
-        const { data } = supabase.storage.from('profile_photos').getPublicUrl(filePath);
-        
-        return data.publicUrl;
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage.from('profile_photos').getPublicUrl(filePath);
+      return data.publicUrl;
     },
+
     updateProfilePreferences: async (prefs: Partial<Profile['preferences']>) => {
-        if (!user || !profile) return;
-        const currentPrefs = (profile.preferences || {}) as Record<string, any>;
-        // Cast `prefs` to a record type to resolve the spread operator error,
-        // as the `Json` type from Supabase is too broad and can be a non-object.
-        const updatedPreferences = { ...currentPrefs, ...(prefs as Record<string, any>) };
-        await value.updateProfile({ preferences: updatedPreferences });
+      if (!user || !profile) return;
+      const currentPrefs = (profile.preferences || {}) as Record<string, any>;
+      const updatedPreferences = { ...currentPrefs, ...(prefs as Record<string, any>) };
+      await value.updateProfile({ preferences: updatedPreferences });
     },
+
     resetPasswordForEmail: async (email: string) => {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: window.location.origin, // URL to redirect to after password reset
-        });
-        return { error };
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin,
+      });
+      return { error };
     },
+
     updateUserEmail: async (newEmail: string) => {
-        if (!user) return { error: { message: 'Nenhum utilizador autenticado.' } };
-        const { error } = await supabase.auth.updateUser({ email: newEmail });
-        return { error };
+      if (!user) return { error: { message: 'Nenhum utilizador autenticado.' } };
+      const { error } = await supabase.auth.updateUser({ email: newEmail });
+      return { error };
     },
   };
 
@@ -170,8 +189,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth deve ser usado dentro de AuthProvider');
   return context;
 };

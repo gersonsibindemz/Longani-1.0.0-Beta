@@ -152,15 +152,49 @@ export const getFriendlyErrorMessage = (error: unknown, transcriptionId?: string
   // Default message for truly unknown errors.
   let friendlyMessage = 'Ocorreu um erro inesperado. Por favor, tente novamente ou contacte o suporte se o problema persistir.';
 
-  let technicalMessage = '';
+  let rawMessage = '';
   if (error instanceof Error) {
-    technicalMessage = error.message.toUpperCase();
+    rawMessage = error.message;
   } else if (typeof error === 'string') {
-    technicalMessage = error.toUpperCase();
+    rawMessage = error;
+  } else if (typeof error === 'object' && error !== null) {
+    // Handle specific nested error structures, like from Gemini or other APIs
+    if ('error' in error && typeof (error as any).error === 'object' && (error as any).error !== null && 'message' in (error as any).error) {
+      rawMessage = String((error as any).error.message);
+    } else if ('message' in error) {
+      rawMessage = String((error as { message: unknown }).message);
+    } else {
+      // Fallback for other object types
+      try {
+        rawMessage = JSON.stringify(error);
+      } catch {
+        rawMessage = '[object Object]'; // Should be rare
+      }
+    }
+  } else {
+    rawMessage = String(error);
   }
 
+  // Attempt to parse if the raw message is a JSON string, which might contain a nested message
+  try {
+    const parsed = JSON.parse(rawMessage);
+    if (parsed?.error?.message) {
+        rawMessage = parsed.error.message;
+    }
+  } catch (e) {
+    // Not a JSON string, ignore and use the message as is
+  }
+
+  const technicalMessage = rawMessage.toUpperCase();
+  
+  // --- Specific Error Matching ---
+
+  // Network/CORS/Blocker errors (often result in status code 0)
+  if (technicalMessage.includes('HTTP RESPONSE') && (technicalMessage.includes('STATUS CODE: 0') || technicalMessage.includes('HTTP STATUS CODE: 0'))) {
+    friendlyMessage = 'A comunicação com o serviço de IA foi bloqueada. Verifique a sua ligação à internet, desative qualquer VPN ou bloqueador de anúncios e tente novamente.';
+  }
   // --- Gemini API / Network Errors ---
-  if (technicalMessage.includes('API_KEY_INVALID') || technicalMessage.includes('API KEY')) {
+  else if (technicalMessage.includes('API_KEY_INVALID') || technicalMessage.includes('API KEY')) {
     friendlyMessage = 'A chave de acesso ao serviço de IA é inválida ou está em falta. Por favor, contacte o suporte técnico para resolver este problema de configuração.';
     // Provide a more specific log for developers.
     console.error(`${logPrefix} Developer Info: The Gemini API key is missing, invalid, or expired.`);
