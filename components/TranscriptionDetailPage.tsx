@@ -81,6 +81,11 @@ export const TranscriptionDetailPage: React.FC<{ transcriptionId: string; onEdit
         }
     };
 
+    const handleBackClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+        event.preventDefault();
+        window.location.hash = '#/history';
+    };
+
     if (isLoading) {
         return <div className="flex-grow flex items-center justify-center"><Loader className="w-8 h-8 text-[#24a9c5]" /></div>;
     }
@@ -101,7 +106,11 @@ export const TranscriptionDetailPage: React.FC<{ transcriptionId: string; onEdit
     return (
         <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow animate-fade-in">
             <div className="mb-6">
-                <a href="#/history" className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-[#24a9c5] dark:hover:text-[#24a9c5]">
+                <a 
+                    href="#/history" 
+                    onClick={handleBackClick}
+                    className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-[#24a9c5] dark:hover:text-[#24a9c5]"
+                >
                     <ArrowLeftIcon className="w-4 h-4" />
                     Voltar para Minhas Transcrições
                 </a>
@@ -114,9 +123,6 @@ export const TranscriptionDetailPage: React.FC<{ transcriptionId: string; onEdit
                     {transcription.original_language && <span className="flex items-center gap-1.5"><TranslateIcon className="w-4 h-4" /> Idioma: {translateLanguageName(transcription.original_language)}</span>}
                  </div>
                  <div className="mt-4 flex items-center gap-2">
-                     <button onClick={() => onEdit(transcription.id)} className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
-                         <EditIcon className="w-4 h-4" /> Editar no Início
-                     </button>
                       <button onClick={handleToggleFavorite} className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-gray-700 bg-gray-200 rounded-full hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600 transition-colors">
                         {transcription.is_favorite ? <StarIcon className="w-4 h-4 text-yellow-500" /> : <StarOutlineIcon className="w-4 h-4" />}
                         {transcription.is_favorite ? 'Favorito' : 'Adicionar aos Favoritos'}

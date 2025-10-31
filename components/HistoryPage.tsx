@@ -195,7 +195,6 @@ export const HistoryPage: React.FC = () => {
                                     trigger={<button className="p-2 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"><MoreVerticalIcon className="w-5 h-5"/></button>}
                                     options={[
                                         { label: 'Ver Detalhes', icon: <EditIcon className="w-4 h-4" />, onClick: () => handleViewDetails(item.id) },
-                                        { label: 'Editar no Início', icon: <EditIcon className="w-4 h-4" />, onClick: () => handleEdit(item.id) },
                                         { label: 'Renomear', icon: <EditIcon className="w-4 h-4" />, onClick: () => setItemToRename(item) },
                                         { label: 'Traduzir (Inglês)', icon: <TranslateIcon className="w-4 h-4" />, onClick: () => handleTranslate(item), disabled: !item.cleaned_transcript },
                                         team ? (item.team_id ? 

@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader } from './Loader';
 import { ClipboardIcon, CheckIcon, ChevronDownIcon } from './Icons';
@@ -101,7 +102,7 @@ export const TranscriptDisplay: React.FC<TranscriptDisplayProps> = ({ title, tex
             {isClickable && <ChevronDownIcon className={`w-5 h-5 text-gray-400 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />}
         </div>
       </div>
-      <div className={`transition-[max-height] duration-500 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[150vh]' : 'max-h-0'}`}>
+      <div className={`transition-[max-height] duration-500 ease-in-out overflow-y-auto ${isExpanded ? 'max-h-[60vh]' : 'max-h-0'}`}>
         <div className={`p-6 relative ${isExpanded ? 'min-h-[300px]' : ''}`}>
             {isLoading ? (
             <div className="absolute inset-0 flex items-center justify-center bg-white/30 dark:bg-gray-900/50 rounded-b-xl">

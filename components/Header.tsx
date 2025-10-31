@@ -111,7 +111,7 @@ export const Header: React.FC<HeaderProps> = (props) => {
             <div className="flex-shrink-0">
               <a
                 href="#/home"
-                onClick={handleNavClick}
+                onClick={handleHomeResetClick}
                 aria-label="Página inicial do Longani"
                 className="inline-block rounded-md transition-transform duration-150 ease-in-out active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[#24a9c5] dark:focus-visible:ring-offset-gray-900"
               >

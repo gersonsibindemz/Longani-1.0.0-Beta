@@ -27,91 +27,69 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const getSessionAndProfile = async () => {
-      try {
-        const { data } = await supabase.auth.getSession();
-        const currentSession = data.session ?? null;
-        setSession(currentSession);
-        setUser(currentSession?.user ?? null);
-
-        if (currentSession?.user) {
-          const { data: profileData, error } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', currentSession.user.id)
-            .single();
-          // PGRST116 means no rows found, which is not a critical error on initial load.
-          // The auth listener will handle profile creation if needed.
-          if (error && error.code !== 'PGRST116') {
-            console.error('Error fetching initial profile:', error);
-          }
-          setProfile(profileData ?? null);
-        }
-      } catch (e) {
-        console.error('An unexpected error occurred during initial session check:', e);
-      } finally {
-        // This ensures the loading spinner is always removed, fixing the infinite load on refresh.
-        setLoading(false);
-      }
-    };
-
-    getSessionAndProfile();
-
     const { data: authListener } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
+      (event, newSession) => {
+        // Set session and user state SYNCHRONOUSLY.
         setSession(newSession);
         const newAuthUser = newSession?.user ?? null;
         setUser(newAuthUser);
-
+        
+        // Fetch profile ASYNCHRONOUSLY, without blocking the UI.
         if (newAuthUser) {
-          const { data: profileData, error: selectError } = await supabase
+          supabase
             .from('profiles')
             .select('*')
             .eq('id', newAuthUser.id)
-            .single();
-
-          if (!profileData) {
-            try {
-              const { data: newProfile, error: insertError } = await supabase
-                .from('profiles')
-                .insert({
-                  id: newAuthUser.id,
-                  name: newAuthUser.user_metadata?.full_name ?? 'Novo Utilizador',
-                  device_id: newAuthUser.user_metadata?.device_id, // Get device_id from metadata
-                })
-                .select()
-                .single();
-
-              if (insertError) {
-                console.warn('Could not insert profile via client (may already exist or RLS blocking):', insertError);
-              } else {
-                setProfile(newProfile as Profile);
+            .single()
+            .then(({ data: profileData, error: profileError }) => {
+              if (profileError && profileError.code !== 'PGRST116') {
+                throw profileError; // Throw unexpected errors
               }
-            } catch (e) {
-              console.warn('Error inserting profile (caught):', e);
-            }
-          } else {
-            setProfile(profileData as Profile);
-          }
 
-          if (window.location.hash.startsWith('#/awaiting-confirmation')) {
-            window.location.hash = '#/home';
-          }
+              if (profileData) {
+                setProfile(profileData);
+              } else {
+                // Profile not found, which is expected for new sign-ups.
+                // Attempt to create one.
+                supabase
+                  .from('profiles')
+                  .insert({
+                    id: newAuthUser.id,
+                    name: newAuthUser.user_metadata?.full_name ?? 'Novo Utilizador',
+                    device_id: newAuthUser.user_metadata?.device_id,
+                  })
+                  .select()
+                  .single()
+                  .then(({ data: newProfile, error: insertError }) => {
+                    if (insertError) {
+                      // This can happen in a race condition or if RLS fails.
+                      console.warn('Failed to auto-create profile:', insertError.message);
+                      setProfile(null);
+                    } else {
+                      setProfile(newProfile);
+                    }
+                  });
+              }
+            })
+            .catch(error => {
+              console.error("Error handling profile:", error);
+              setProfile(null);
+            });
         } else {
+          // If there's no user, there's no profile.
           setProfile(null);
-          // Only redirect if the user explicitly signed out.
-          // This prevents redirection on initial page load before the session is restored.
-          if (event === 'SIGNED_OUT') {
-            window.location.hash = '#/login';
-          }
         }
+        
+        // CRITICAL FIX: Set loading to false as soon as the session is known.
+        // This makes the app UI responsive immediately and decouples it from
+        // the profile fetching network request, which now happens in the background.
+        setLoading(false);
       }
     );
 
     return () => {
       authListener.subscription.unsubscribe();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const value: AuthContextType = {
