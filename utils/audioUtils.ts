@@ -430,3 +430,39 @@ export const getPlanLimits = (): Record<Plan, number> => ({
 export const calculateMonthlyUsage = (audioFiles: AudioFile[]): number => {
     return audioFiles.reduce((total, file) => total + (file.duration_seconds || 0), 0);
 };
+
+/**
+ * Determines the start date for the user's current usage period.
+ * For trial users, it's their creation date.
+ * For paid users, it calculates the start of the current 30-day cycle,
+ * anchored to the date their trial period ended.
+ * @param profile The user's profile object.
+ * @returns An object containing the start date of the current usage period.
+ */
+export const getCurrentUsagePeriod = (profile: Profile): { start: Date } => {
+    if (profile.plan === 'trial') {
+        // Trial usage is calculated from the beginning of the trial.
+        return { start: new Date(profile.created_at) };
+    }
+
+    // For paid plans, the cycle is 30 days. The anchor is the trial end date.
+    const nowMs = Date.now();
+    const trialEndDate = getTrialEndDate(profile.created_at);
+    const trialEndMs = trialEndDate.getTime();
+
+    // If the trial hasn't officially ended yet (e.g., they upgraded early),
+    // their first "paid" period starts from the beginning of their account.
+    // This is simple and fair, giving them their new limit immediately.
+    if (nowMs < trialEndMs) {
+        return { start: new Date(profile.created_at) };
+    }
+
+    // The trial has ended. Calculate the start of the current 30-day cycle.
+    const thirtyDayMs = 30 * 24 * 60 * 60 * 1000;
+    const timeSinceTrialEnd = nowMs - trialEndMs;
+    const cyclesSinceTrialEnd = Math.floor(timeSinceTrialEnd / thirtyDayMs);
+    
+    const currentCycleStartMs = trialEndMs + (cyclesSinceTrialEnd * thirtyDayMs);
+
+    return { start: new Date(currentCycleStartMs) };
+};

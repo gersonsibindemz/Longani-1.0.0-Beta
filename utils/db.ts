@@ -125,14 +125,11 @@ export const getAllAudioFiles = async (): Promise<AudioFile[]> => {
     return data || [];
 };
 
-export const getAudioFilesForCurrentMonth = async (): Promise<AudioFile[]> => {
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
-
+export const getAudioFilesSince = async (startDate: string): Promise<AudioFile[]> => {
     const { data, error } = await supabase
         .from('audio_files')
         .select('*')
-        .gte('created_at', startOfMonth);
+        .gte('created_at', startDate);
 
     if (error) throw error;
     return data || [];

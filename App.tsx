@@ -6,10 +6,10 @@ import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { ProgressBar } from './components/ProgressBar';
 import { Loader } from './components/Loader';
 import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon, SearchIcon, WaveformIcon, TranslateIcon, UsersIcon, SaveIcon, CheckIcon } from './components/Icons';
-import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, formatProcessingTime, translateLanguageName, isTrialActive, getTrialDaysRemaining, calculateMonthlyUsage } from './utils/audioUtils';
+import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, formatProcessingTime, translateLanguageName, isTrialActive, getTrialDaysRemaining, calculateMonthlyUsage, getCurrentUsagePeriod, getPlanLimits } from './utils/audioUtils';
 import { HistoryPage } from './components/HistoryPage';
 import { RecordingsPage } from './components/RecordingsPage';
-import { addTranscription, addAudioFile, getAllTranscriptions, getTranscriptionById, getAudioRecording, updateTranscription, deleteTranscription, getAudioFilesForCurrentMonth, getTranscriptionByAudioId } from './utils/db';
+import { addTranscription, addAudioFile, getAllTranscriptions, getTranscriptionById, getAudioRecording, updateTranscription, deleteTranscription, getAudioFilesSince, getTranscriptionByAudioId } from './utils/db';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FavoritesPage } from './components/FavoritesPage';
 import { TranslationsPage } from './components/TranslationsPage';
@@ -275,6 +275,7 @@ const App: React.FC = () => {
   const [showDesktopLock, setShowDesktopLock] = useState(window.innerWidth >= 1280);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [monthlyUsage, setMonthlyUsage] = useState(0);
+  const [isUsageLocked, setIsUsageLocked] = useState(false);
   
   // State for real-time progress and final stats
   const [audioDuration, setAudioDuration] = useState<number>(0);
@@ -382,9 +383,15 @@ const App: React.FC = () => {
     const calculateUsage = async () => {
         if (currentUser) {
             try {
-                const audioFiles: AudioFile[] = await getAudioFilesForCurrentMonth();
+                const usagePeriod = getCurrentUsagePeriod(currentUser);
+                const audioFiles: AudioFile[] = await getAudioFilesSince(usagePeriod.start.toISOString());
                 const usage = calculateMonthlyUsage(audioFiles);
                 setMonthlyUsage(usage);
+
+                const planLimits = getPlanLimits();
+                const currentPlanLimit = planLimits[currentUser.plan || 'basico'];
+                setIsUsageLocked(usage >= currentPlanLimit && currentPlanLimit !== Infinity);
+
             } catch (e) {
                 let errorDetails = '';
                 if (e instanceof Error) {
@@ -397,7 +404,8 @@ const App: React.FC = () => {
                 console.error(`Failed to calculate monthly usage. Details: ${errorDetails}`, e);
             }
         } else {
-            setMonthlyUsage(0); // Reset if no user is logged in
+            setMonthlyUsage(0);
+            setIsUsageLocked(false);
         }
     };
 
@@ -710,20 +718,28 @@ const App: React.FC = () => {
     const trialIsActive = isTrialActive(currentUser?.created_at);
     const trialDaysRemaining = getTrialDaysRemaining(currentUser?.created_at);
     const trialHasExpired = !!currentUser?.created_at && !trialIsActive;
-    const isFeatureLocked = currentUser?.plan === 'trial' && trialHasExpired;
+    const isTrialExpiredLocked = currentUser?.plan === 'trial' && trialHasExpired;
+    const isFeatureLocked = isTrialExpiredLocked || isUsageLocked;
 
   const handleProcessAudio = useCallback(async () => {
     if (!audioFile || !currentUser) {
       setError('Por favor, selecione um ficheiro de áudio e inicie a sessão para processar.');
       return;
     }
+
+    const navigateToPlans = (e: React.MouseEvent<HTMLAnchorElement>) => {
+        e.preventDefault();
+        window.location.hash = '#/plans';
+    };
     
     if (isFeatureLocked) {
-        setError(
-            <>
-                O seu período de teste terminou. Por favor, <a href="#/plans" className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para continuar a transcrever.
-            </>
-        );
+        let lockMessage;
+        if (isTrialExpiredLocked) {
+            lockMessage = <>O seu período de teste terminou. Por favor, <a href="#/plans" onClick={navigateToPlans} className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para continuar a transcrever.</>;
+        } else { // Must be usage locked
+            lockMessage = <>O seu limite de utilização mensal foi atingido. Por favor, <a href="#/plans" onClick={navigateToPlans} className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para obter mais tempo ou aguarde pelo próximo ciclo.</>;
+        }
+        setError(lockMessage);
         return;
     }
     
@@ -785,7 +801,7 @@ const App: React.FC = () => {
       setError(friendlyMessage);
       setProcessStage('idle');
     }
-  }, [audioFile, initialPrecision, handleCloseNowPlaying, preferredLanguage, detectedLanguage, currentUser, isFeatureLocked]);
+  }, [audioFile, initialPrecision, handleCloseNowPlaying, preferredLanguage, detectedLanguage, currentUser, isFeatureLocked, isTrialExpiredLocked, isUsageLocked]);
 
   const handleSaveTranscription = async () => {
     if (!audioFile || !profile || isSaving) return;
@@ -906,7 +922,14 @@ const App: React.FC = () => {
     // From here, we know the user is authenticated.
     const trialWarningDays = 5;
     const shouldShowTrialWarning = currentUser?.plan === 'trial' && trialIsActive && trialDaysRemaining <= trialWarningDays;
-    const shouldShowTrialExpiredBanner = isFeatureLocked;
+    const shouldShowTrialExpiredBanner = isTrialExpiredLocked;
+    const shouldShowMonthlyLimitBanner = isUsageLocked && !isTrialExpiredLocked;
+
+    const navigateToPlans = (e: React.MouseEvent<HTMLAnchorElement>) => {
+        e.preventDefault();
+        window.location.hash = '#/plans';
+    };
+
     const urlParts = page.split('/');
 
     switch (urlParts[0]) {
@@ -972,7 +995,7 @@ const App: React.FC = () => {
                     <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
                         {trialDaysRemaining > 1 ? `O seu período de teste termina em ${trialDaysRemaining} dias.` : 'O seu período de teste termina hoje!'} Considere fazer um upgrade para manter o acesso.
                     </p>
-                    <a href="#/plans" className="inline-block mt-3 px-4 py-1.5 text-sm font-bold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
+                    <a href="#/plans" onClick={navigateToPlans} className="inline-block mt-3 px-4 py-1.5 text-sm font-bold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
                         Ver Planos
                     </a>
                 </div>
@@ -985,14 +1008,27 @@ const App: React.FC = () => {
                     <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
                         Para continuar a transcrever e usar todas as funcionalidades, por favor, escolha um plano.
                     </p>
-                    <a href="#/plans" className="inline-block mt-3 px-4 py-1.5 text-sm font-bold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
+                    <a href="#/plans" onClick={navigateToPlans} className="inline-block mt-3 px-4 py-1.5 text-sm font-bold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
                         Ver Planos
+                    </a>
+                </div>
+            )}
+            {shouldShowMonthlyLimitBanner && (
+                 <div className="max-w-3xl mx-auto w-full p-4 mb-6 bg-red-100 dark:bg-red-900/40 rounded-lg border border-red-200 dark:border-red-800/60 text-center animate-fade-in">
+                    <p className="font-semibold text-red-800 dark:text-red-200">
+                        Limite Mensal Atingido
+                    </p>
+                    <p className="text-sm text-red-700 dark:text-red-300 mt-1">
+                        Utilizou todo o tempo de transcrição do seu plano para este mês. O seu limite será reiniciado no próximo ciclo.
+                    </p>
+                    <a href="#/plans" onClick={navigateToPlans} className="inline-block mt-3 px-4 py-1.5 text-sm font-bold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
+                        Ver Planos e Fazer Upgrade
                     </a>
                 </div>
             )}
             {!audioFile && (
               <div className="flex-grow flex flex-col justify-between">
-                <div> {/* Wrapper for top content */}
+                <div className="pt-20"> {/* Wrapper for top content */}
                     <div className="flex-grow flex flex-col justify-center items-center">
                         <div className="max-w-3xl mx-auto w-full bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
                           <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
@@ -1266,7 +1302,13 @@ const App: React.FC = () => {
                     <button
                         onClick={() => {
                             if (isFeatureLocked) {
-                                setError(<>O seu período de teste terminou. Por favor, <a href="#/plans" className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para aceder a esta funcionalidade.</>);
+                                let lockMessage;
+                                if (isTrialExpiredLocked) {
+                                    lockMessage = <>O seu período de teste terminou. Por favor, <a href="#/plans" onClick={navigateToPlans} className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para aceder a esta funcionalidade.</>;
+                                } else {
+                                    lockMessage = <>O seu limite de utilização mensal foi atingido. Por favor, <a href="#/plans" onClick={navigateToPlans} className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para continuar a usar as funcionalidades.</>;
+                                }
+                                setError(lockMessage);
                                 window.scrollTo(0, 0);
                                 return;
                             }
@@ -1276,7 +1318,7 @@ const App: React.FC = () => {
                             if (!canAccessPremium) {
                                 setError(
                                     <>
-                                        O Refinamento Avançado é uma funcionalidade exclusiva do plano Premium. <a href="#/plans" className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">Faça um upgrade</a> para aceder.
+                                        O Refinamento Avançado é uma funcionalidade exclusiva do plano Premium. <a href="#/plans" onClick={navigateToPlans} className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">Faça um upgrade</a> para aceder.
                                     </>
                                 );
                                 window.scrollTo(0, 0);
