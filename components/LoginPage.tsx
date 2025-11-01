@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader } from './Loader';
 import { longaniLogoUrl } from './Header';
 import { useAuth } from '../contexts/AuthContext';
@@ -11,8 +11,17 @@ export const LoginPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+
+  useEffect(() => {
+    const message = sessionStorage.getItem('signup_success');
+    if (message) {
+      setSuccessMessage(message);
+      sessionStorage.removeItem('signup_success');
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,6 +58,9 @@ export const LoginPage: React.FC = () => {
               Bem-vindo de volta
               <span className="block text-xl font-normal text-gray-600 dark:text-gray-400 mt-1">Entrar</span>
             </h1>
+            
+            {successMessage && <p className="mb-4 text-center text-sm text-green-800 bg-green-100 p-3 rounded-lg border border-green-200 dark:bg-green-900/50 dark:text-green-300 dark:border-green-800/50">{successMessage}</p>}
+
             <form onSubmit={handleLogin} noValidate>
               <div className="space-y-4">
                 <div>

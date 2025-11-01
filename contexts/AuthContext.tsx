@@ -8,7 +8,6 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
-  isAwaitingConfirmation: boolean;
   signIn: (email: string, pass: string) => Promise<{ error: any }>;
   signUp: (email: string, pass: string, name: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -26,7 +25,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAwaitingConfirmation, setIsAwaitingConfirmation] = useState(false);
 
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange(
@@ -35,10 +33,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         const newAuthUser = newSession?.user ?? null;
         setUser(newAuthUser);
         
-        if (newSession) {
-          setIsAwaitingConfirmation(false);
-        }
-
         if (newAuthUser) {
           supabase
             .from('profiles')
@@ -94,7 +88,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     user,
     profile,
     loading,
-    isAwaitingConfirmation,
 
     signIn: async (email: string, pass: string) => {
       const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
@@ -118,10 +111,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
           },
         },
       });
-
-      if (!error && data.user) {
-        setIsAwaitingConfirmation(true);
-      }
 
       return { error };
     },

@@ -59,8 +59,10 @@ export const SignUpPage: React.FC = () => {
             setError(signUpError.message);
         }
         setIsLoading(false);
-    } 
-    // On success, the AuthProvider sets isAwaitingConfirmation and the app will redirect via the hook effect.
+    } else {
+        sessionStorage.setItem('signup_success', 'Conta criada com sucesso! Por favor, confirme o seu email antes de iniciar a sessão.');
+        window.location.hash = '#/login';
+    }
   };
   
   const handleNavClick = (event: React.MouseEvent<HTMLAnchorElement>) => {

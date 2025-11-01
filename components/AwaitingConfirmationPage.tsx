@@ -3,9 +3,9 @@ import { longaniLogoUrl } from './Header';
 
 export const AwaitingConfirmationPage: React.FC = () => {
 
-    const handleRefresh = () => {
-        // Simple reload, the AuthContext will handle redirection if the user is confirmed.
-        window.location.reload();
+    const handleContinueToLogin = () => {
+        // Navigate to the login page so the user can sign in after confirmation.
+        window.location.hash = '#/login';
     }
 
     return (
@@ -20,7 +20,7 @@ export const AwaitingConfirmationPage: React.FC = () => {
                         Enviámos um link de confirmação para o seu endereço de email. Por favor, clique no link para ativar a sua conta.
                     </p>
                     <button
-                        onClick={handleRefresh}
+                        onClick={handleContinueToLogin}
                         className="w-full flex justify-center items-center gap-2 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#24a9c5] hover:bg-[#1e8a9f] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-900 transition-colors"
                     >
                         Já confirmei, quero continuar
