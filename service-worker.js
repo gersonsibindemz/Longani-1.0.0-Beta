@@ -37,10 +37,11 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Service Worker: Caching app shell');
-        return cache.addAll(urlsToCache);
-      })
-      .catch(err => {
-        console.error('Service Worker: Caching failed during install', err);
+        // Use `cache.addAll()` which is atomic. If one file fails, the whole operation fails.
+        // Also, add a `.catch()` to log potential caching errors during installation.
+        return cache.addAll(urlsToCache).catch(error => {
+          console.error('Service Worker: Failed to cache one or more files during install:', error);
+        });
       })
   );
 });

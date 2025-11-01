@@ -1,5 +1,6 @@
 
 
+
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { transcribeAudio, cleanTranscript, translateText, refineTranscript, detectLanguage } from './services/geminiService';
 import { Header, longaniLogoUrl } from './components/Header';
@@ -29,6 +30,7 @@ import { GoogleDrivePicker } from './components/GoogleDrivePicker';
 import type { Theme, PreferredLanguage, AudioRecording, AudioFile, Transcription, RecordingQuality } from './types';
 import { TranscriptionDetailPage } from './components/TranscriptionDetailPage';
 import { ProcessingLogOverlay } from './components/ProcessingLogOverlay';
+import { AwaitingConfirmationPage } from './components/AwaitingConfirmationPage';
 
 
 type ProcessStage = 'idle' | 'transcribing' | 'cleaning' | 'completed';
@@ -249,7 +251,7 @@ const uploadAndLinkAudio = async (transcriptionId: string, audioFile: File, user
 };
 
 const App: React.FC = () => {
-  const { session, profile, loading, signOut, updateProfilePreferences } = useAuth();
+  const { session, profile, loading, signOut, updateProfilePreferences, isAwaitingConfirmation } = useAuth();
   const currentUser = profile; // Use profile as the main user object for app logic
 
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -916,6 +918,10 @@ const App: React.FC = () => {
                 <Loader className="w-12 h-12 text-[#24a9c5]" />
             </div>
         );
+    }
+
+    if (isAwaitingConfirmation && !session) {
+        return <AwaitingConfirmationPage />;
     }
 
     if (!session) {

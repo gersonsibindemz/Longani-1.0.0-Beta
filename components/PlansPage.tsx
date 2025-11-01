@@ -46,7 +46,6 @@ const plans = [
 
 export const PlansPage: React.FC = () => {
     const { profile, updateProfile, loading } = useAuth();
-    const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
     const [isUpdating, setIsUpdating] = useState<Plan | null>(null);
     
     if (loading || !profile) {
@@ -74,45 +73,10 @@ export const PlansPage: React.FC = () => {
                     Escolha o plano que melhor se adapta às suas necessidades de transcrição.
                 </p>
             </div>
-
-            <div className="flex justify-center mb-10">
-                <div className="relative flex p-1 bg-gray-200 dark:bg-gray-700 rounded-full w-full max-w-xs">
-                    <button
-                        onClick={() => setBillingCycle('monthly')}
-                        className={`relative w-1/2 rounded-full py-2 text-sm font-semibold transition-colors focus:outline-none ${
-                            billingCycle === 'monthly' ? 'text-cyan-800 dark:text-cyan-200' : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white'
-                        }`}
-                    >
-                        Mensal
-                    </button>
-                    <button
-                        onClick={() => setBillingCycle('yearly')}
-                        className={`relative w-1/2 rounded-full py-2 text-sm font-semibold transition-colors focus:outline-none ${
-                            billingCycle === 'yearly' ? 'text-cyan-800 dark:text-cyan-200' : 'text-gray-600 dark:text-gray-300 hover:text-gray-800 dark:hover:text-white'
-                        }`}
-                    >
-                        Anual
-                    </button>
-                    <span
-                        className={`absolute top-1 h-[calc(100%-8px)] bg-white dark:bg-gray-800 rounded-full shadow-md transition-transform duration-300 ease-in-out ${
-                            billingCycle === 'yearly' ? 'transform translate-x-full' : ''
-                        }`}
-                        style={{ width: 'calc(50% - 4px)', left: '4px' }}
-                    ></span>
-                </div>
-                 {billingCycle === 'yearly' && (
-                    <div className="absolute mt-[-10px] ml-48">
-                        <span className="px-2 py-0.5 text-xs font-semibold bg-yellow-200 text-yellow-800 rounded-full dark:bg-yellow-900 dark:text-yellow-200 transform -rotate-6 inline-block">
-                            Poupe 20%
-                        </span>
-                    </div>
-                )}
-            </div>
             
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                 {plans.map((plan) => {
-                    const isYearly = billingCycle === 'yearly';
-                    const finalPrice = isYearly ? plan.priceMonthly * 12 * 0.8 : plan.priceMonthly;
+                    const finalPrice = plan.priceMonthly;
 
                     return (
                         <div key={plan.id} className={`rounded-2xl p-8 border-2 flex flex-col ${profile.plan === plan.id ? 'border-[#24a9c5] shadow-2xl bg-white/80 dark:bg-gray-800/80' : 'border-gray-200 dark:border-gray-700 bg-white/60 dark:bg-gray-800/60'}`}>
@@ -122,15 +86,10 @@ export const PlansPage: React.FC = () => {
                                 <p className="mt-4 text-4xl font-bold tracking-tight text-gray-900 dark:text-white">
                                     {`${finalPrice.toLocaleString('pt-PT')} MZN`}
                                     <span className="text-base font-medium text-gray-500 dark:text-gray-400">
-                                        {isYearly ? '/ano' : '/mês'}
+                                        /mês
                                     </span>
                                 </p>
-                                {isYearly && (
-                                     <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                                        Cobrado anualmente. Equivale a {plan.priceMonthly.toLocaleString('pt-PT')} MZN/mês.
-                                    </p>
-                                )}
-
+                               
                                 <p className="mt-6 text-gray-600 dark:text-gray-400">{plan.description}</p>
                                 <ul role="list" className="mt-8 space-y-4 text-sm leading-6 text-gray-600 dark:text-gray-300">
                                     {plan.features.map(feature => (

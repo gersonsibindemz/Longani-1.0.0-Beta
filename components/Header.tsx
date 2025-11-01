@@ -21,24 +21,9 @@ interface HeaderProps {
   monthlyUsage: number;
 }
 
-export const Header: React.FC<HeaderProps> = (props) => {
+export const Header: React.FC<HeaderProps> = React.memo((props) => {
   const { page, theme, setTheme, preferredLanguage, setPreferredLanguage, preferredRecordingQuality, setRecordingQuality, currentUser, onLogout, onSearchClick, onHomeReset, monthlyUsage } = props;
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [localTheme, setLocalTheme] = useState(theme);
-  const [localLanguage, setLocalLanguage] = useState(preferredLanguage);
-  const [localRecordingQuality, setLocalRecordingQuality] = useState(preferredRecordingQuality);
-
-  useEffect(() => {
-    setLocalTheme(theme);
-  }, [theme]);
-  
-  useEffect(() => {
-    setLocalLanguage(preferredLanguage);
-  }, [preferredLanguage]);
-
-  useEffect(() => {
-    setLocalRecordingQuality(preferredRecordingQuality);
-  }, [preferredRecordingQuality]);
 
   // Effect to lock body scroll when the mobile menu is open.
   useEffect(() => {
@@ -71,13 +56,6 @@ export const Header: React.FC<HeaderProps> = (props) => {
   const toggleMenu = () => {
     setIsMenuOpen(prev => !prev);
   }
-
-  const handleSavePreferences = () => {
-    setTheme(localTheme);
-    setPreferredLanguage(localLanguage);
-    setRecordingQuality(localRecordingQuality);
-    setIsMenuOpen(false); // Close menu
-  };
   
   const handleLogoutAndCloseMenu = () => {
     onLogout();
@@ -483,17 +461,17 @@ export const Header: React.FC<HeaderProps> = (props) => {
                         <button
                             type="button"
                             role="switch"
-                            aria-label={`Mudar para modo ${localTheme === 'dark' ? 'claro' : 'escuro'}`}
-                            aria-checked={localTheme === 'light'}
-                            onClick={() => setLocalTheme(localTheme === 'dark' ? 'light' : 'dark')}
+                            aria-label={`Mudar para modo ${theme === 'dark' ? 'claro' : 'escuro'}`}
+                            aria-checked={theme === 'light'}
+                            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
                             className="relative w-12 h-7 flex items-center bg-gray-300 dark:bg-gray-600 rounded-full p-1 cursor-pointer transition-colors duration-300"
                         >
                             <span className="absolute left-0 w-full h-full flex items-center justify-between px-2">
-                                <MoonIcon className={`w-3 h-3 transition-colors ${localTheme === 'dark' ? 'text-yellow-400' : 'text-gray-500'}`} />
-                                <SunIcon className={`w-3 h-3 transition-colors ${localTheme === 'light' ? 'text-yellow-500' : 'text-gray-500'}`} />
+                                <MoonIcon className={`w-3 h-3 transition-colors ${theme === 'dark' ? 'text-yellow-400' : 'text-gray-500'}`} />
+                                <SunIcon className={`w-3 h-3 transition-colors ${theme === 'light' ? 'text-yellow-500' : 'text-gray-500'}`} />
                             </span>
                             <span
-                                className={`block w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-300 ${localTheme === 'light' ? 'translate-x-5' : 'translate-x-0'}`}
+                                className={`block w-5 h-5 bg-white rounded-full shadow-md transform transition-transform duration-300 ${theme === 'light' ? 'translate-x-5' : 'translate-x-0'}`}
                             />
                         </button>
                     </div>
@@ -501,23 +479,17 @@ export const Header: React.FC<HeaderProps> = (props) => {
                     <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Idioma de Saída</p>
                         <div role="radiogroup" className="flex items-center gap-4">
-                            <button role="radio" aria-checked={localLanguage === 'pt'} onClick={() => setLocalLanguage('pt')} className={`text-sm font-medium transition-colors ${localLanguage === 'pt' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Português</button>
-                            <button role="radio" aria-checked={localLanguage === 'en'} onClick={() => setLocalLanguage('en')} className={`text-sm font-medium transition-colors ${localLanguage === 'en' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Inglês</button>
+                            <button role="radio" aria-checked={preferredLanguage === 'pt'} onClick={() => setPreferredLanguage('pt')} className={`text-sm font-medium transition-colors ${preferredLanguage === 'pt' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Português</button>
+                            <button role="radio" aria-checked={preferredLanguage === 'en'} onClick={() => setPreferredLanguage('en')} className={`text-sm font-medium transition-colors ${preferredLanguage === 'en' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Inglês</button>
                         </div>
                     </div>
                     {/* Recording Quality Selector */}
                     <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Qualidade de Gravação</p>
                         <div role="radiogroup" className="flex items-center gap-4">
-                            <button role="radio" aria-checked={localRecordingQuality === 'standard'} onClick={() => setLocalRecordingQuality('standard')} className={`text-sm font-medium transition-colors ${localRecordingQuality === 'standard' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Padrão</button>
-                            <button role="radio" aria-checked={localRecordingQuality === 'high'} onClick={() => setLocalRecordingQuality('high')} className={`text-sm font-medium transition-colors ${localRecordingQuality === 'high' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Alta</button>
+                            <button role="radio" aria-checked={preferredRecordingQuality === 'standard'} onClick={() => setRecordingQuality('standard')} className={`text-sm font-medium transition-colors ${preferredRecordingQuality === 'standard' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Padrão</button>
+                            <button role="radio" aria-checked={preferredRecordingQuality === 'high'} onClick={() => setRecordingQuality('high')} className={`text-sm font-medium transition-colors ${preferredRecordingQuality === 'high' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Alta</button>
                         </div>
-                    </div>
-                     {/* Save Button */}
-                    <div className="text-left mt-4">
-                        <button onClick={handleSavePreferences} className="text-sm font-bold text-[#24a9c5] hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-800 rounded-md p-1">
-                            Guardar e Atualizar
-                        </button>
                     </div>
                 </div>
               </div>
@@ -541,4 +513,4 @@ export const Header: React.FC<HeaderProps> = (props) => {
       </aside>
     </>
   );
-};
+});

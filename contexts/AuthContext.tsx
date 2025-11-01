@@ -8,6 +8,7 @@ interface AuthContextType {
   user: User | null;
   profile: Profile | null;
   loading: boolean;
+  isAwaitingConfirmation: boolean;
   signIn: (email: string, pass: string) => Promise<{ error: any }>;
   signUp: (email: string, pass: string, name: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
@@ -25,16 +26,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isAwaitingConfirmation, setIsAwaitingConfirmation] = useState(false);
 
   useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange(
       (event, newSession) => {
-        // Set session and user state SYNCHRONOUSLY.
         setSession(newSession);
         const newAuthUser = newSession?.user ?? null;
         setUser(newAuthUser);
         
-        // Fetch profile ASYNCHRONOUSLY, without blocking the UI.
+        if (newSession) {
+          setIsAwaitingConfirmation(false);
+        }
+
         if (newAuthUser) {
           supabase
             .from('profiles')
@@ -43,14 +47,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
             .single()
             .then(({ data: profileData, error: profileError }) => {
               if (profileError && profileError.code !== 'PGRST116') {
-                throw profileError; // Throw unexpected errors
+                throw profileError; 
               }
 
               if (profileData) {
                 setProfile(profileData);
               } else {
-                // Profile not found, which is expected for new sign-ups.
-                // Attempt to create one.
                 supabase
                   .from('profiles')
                   .insert({
@@ -62,7 +64,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                   .single()
                   .then(({ data: newProfile, error: insertError }) => {
                     if (insertError) {
-                      // This can happen in a race condition or if RLS fails.
                       console.warn('Failed to auto-create profile:', insertError.message);
                       setProfile(null);
                     } else {
@@ -76,13 +77,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               setProfile(null);
             });
         } else {
-          // If there's no user, there's no profile.
           setProfile(null);
         }
         
-        // CRITICAL FIX: Set loading to false as soon as the session is known.
-        // This makes the app UI responsive immediately and decouples it from
-        // the profile fetching network request, which now happens in the background.
         setLoading(false);
       }
     );
@@ -97,6 +94,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     user,
     profile,
     loading,
+    isAwaitingConfirmation,
 
     signIn: async (email: string, pass: string) => {
       const { error } = await supabase.auth.signInWithPassword({ email, password: pass });
@@ -104,7 +102,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     },
 
     signUp: async (email: string, pass: string, name: string) => {
-      // Generate and store a unique device ID to prevent multiple trial accounts.
       let deviceId = localStorage.getItem('longani_deviceId');
       if (!deviceId) {
         deviceId = crypto.randomUUID();
@@ -117,13 +114,13 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         options: {
           data: {
             full_name: name,
-            device_id: deviceId, // Pass the device ID in user metadata
+            device_id: deviceId,
           },
         },
       });
 
       if (!error && data.user) {
-        window.location.hash = '#/login';
+        setIsAwaitingConfirmation(true);
       }
 
       return { error };
