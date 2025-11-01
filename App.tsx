@@ -26,7 +26,7 @@ import DesktopNotice from './components/DesktopNotice';
 import { PlansPage } from './components/PlansPage';
 import { useAuth } from './contexts/AuthContext';
 import { GoogleDrivePicker } from './components/GoogleDrivePicker';
-import type { Theme, PreferredLanguage, AudioRecording, AudioFile, Transcription } from './types';
+import type { Theme, PreferredLanguage, AudioRecording, AudioFile, Transcription, RecordingQuality } from './types';
 import { TranscriptionDetailPage } from './components/TranscriptionDetailPage';
 import { ProcessingLogOverlay } from './components/ProcessingLogOverlay';
 
@@ -265,6 +265,7 @@ const App: React.FC = () => {
   const [isAppVisible, setIsAppVisible] = useState(false);
   const [theme, setTheme] = useState<Theme>('dark');
   const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>('pt');
+  const [preferredRecordingQuality, setPreferredRecordingQuality] = useState<RecordingQuality>('standard');
   const [expandedTranscript, setExpandedTranscript] = useState<ExpandedTranscript>('none');
   const [fileSelectionSuccess, setFileSelectionSuccess] = useState(false);
   const [outputPreference, setOutputPreference] = useState<OutputPreference>('both');
@@ -417,9 +418,10 @@ const App: React.FC = () => {
   // Load preferences from user profile
   useEffect(() => {
     if (profile?.preferences) {
-        const prefs = profile.preferences as { theme?: Theme, language?: PreferredLanguage };
+        const prefs = profile.preferences as { theme?: Theme, language?: PreferredLanguage, recordingQuality?: RecordingQuality };
         if (prefs.theme) setTheme(prefs.theme);
         if (prefs.language) setPreferredLanguage(prefs.language);
+        if (prefs.recordingQuality) setPreferredRecordingQuality(prefs.recordingQuality);
     }
   }, [profile]);
 
@@ -476,6 +478,11 @@ const App: React.FC = () => {
   const handleSetTheme = (newTheme: Theme) => {
     setTheme(newTheme);
     updateProfilePreferences({ theme: newTheme });
+  };
+
+  const handleSetRecordingQuality = (quality: RecordingQuality) => {
+    setPreferredRecordingQuality(quality);
+    updateProfilePreferences({ recordingQuality: quality });
   };
 
   // Effect to clean up the audio object URLs to prevent memory leaks.
@@ -940,7 +947,7 @@ const App: React.FC = () => {
       case 'history':
         return <HistoryPage />;
       case 'recordings':
-        return <RecordingsPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} uploadDisabled={currentUser?.plan === 'trial'} />;
+        return <RecordingsPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} uploadDisabled={currentUser?.plan === 'trial'} preferredQuality={preferredRecordingQuality} />;
       case 'favorites':
         if (currentUser?.plan === 'trial') {
             return <FeatureLockedPage featureName="Favoritos" requiredPlan="Básico ou superior" />;
@@ -1358,6 +1365,8 @@ const App: React.FC = () => {
             setTheme={handleSetTheme} 
             preferredLanguage={preferredLanguage} 
             setPreferredLanguage={handleSetPreferredLanguage}
+            preferredRecordingQuality={preferredRecordingQuality}
+            setRecordingQuality={handleSetRecordingQuality}
             currentUser={currentUser}
             onLogout={signOut}
             onSearchClick={() => setIsSearchOpen(true)}

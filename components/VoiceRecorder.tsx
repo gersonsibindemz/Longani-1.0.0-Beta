@@ -3,29 +3,35 @@ import { MicrophoneIcon, StopIcon } from './Icons';
 import { Loader } from './Loader';
 import { formatPlayerTime } from '../utils/audioUtils';
 import { CustomAudioPlayer } from './CustomAudioPlayer';
+import { RecordingQuality } from '../types';
 
 interface VoiceRecorderProps {
   onSave: (audioBlob: Blob) => void;
+  preferredQuality: RecordingQuality;
 }
 
 type RecordingStatus = 'idle' | 'permission' | 'recording' | 'stopped';
-type RecordingQuality = 'standard' | 'high';
 
 const qualityProfiles: { [key in RecordingQuality]: { label: string, audioBitsPerSecond: number } } = {
   standard: { label: 'Padrão (128kbps)', audioBitsPerSecond: 128000 },
   high: { label: 'Alta Qualidade (256kbps)', audioBitsPerSecond: 256000 }
 };
 
-export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSave }) => {
+export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSave, preferredQuality }) => {
   const [status, setStatus] = useState<RecordingStatus>('idle');
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [quality, setQuality] = useState<RecordingQuality>('standard');
+  const [quality, setQuality] = useState<RecordingQuality>(preferredQuality);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const timerIntervalRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // Sync local quality with global preference when prop changes
+    setQuality(preferredQuality);
+  }, [preferredQuality]);
 
   useEffect(() => {
     return () => {

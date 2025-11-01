@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MenuIcon, CloseIcon, UserIcon, SunIcon, MoonIcon, UsersIcon, SearchIcon, CreditCardIcon } from './Icons';
-import type { Profile, Theme, PreferredLanguage } from '../types';
+import type { Profile, Theme, PreferredLanguage, RecordingQuality } from '../types';
 import { isTrialActive, getTrialDaysRemaining, getPlanLimits, TRIAL_PERIOD_DAYS } from '../utils/audioUtils';
 
 // The logo is loaded from an external URL.
@@ -12,6 +12,8 @@ interface HeaderProps {
   setTheme: (theme: Theme) => void;
   preferredLanguage: PreferredLanguage;
   setPreferredLanguage: (lang: PreferredLanguage) => void;
+  preferredRecordingQuality: RecordingQuality;
+  setRecordingQuality: (quality: RecordingQuality) => void;
   currentUser: Profile | null;
   onLogout: () => void;
   onSearchClick: () => void;
@@ -20,10 +22,11 @@ interface HeaderProps {
 }
 
 export const Header: React.FC<HeaderProps> = (props) => {
-  const { page, theme, setTheme, preferredLanguage, setPreferredLanguage, currentUser, onLogout, onSearchClick, onHomeReset, monthlyUsage } = props;
+  const { page, theme, setTheme, preferredLanguage, setPreferredLanguage, preferredRecordingQuality, setRecordingQuality, currentUser, onLogout, onSearchClick, onHomeReset, monthlyUsage } = props;
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [localTheme, setLocalTheme] = useState(theme);
   const [localLanguage, setLocalLanguage] = useState(preferredLanguage);
+  const [localRecordingQuality, setLocalRecordingQuality] = useState(preferredRecordingQuality);
 
   useEffect(() => {
     setLocalTheme(theme);
@@ -32,6 +35,10 @@ export const Header: React.FC<HeaderProps> = (props) => {
   useEffect(() => {
     setLocalLanguage(preferredLanguage);
   }, [preferredLanguage]);
+
+  useEffect(() => {
+    setLocalRecordingQuality(preferredRecordingQuality);
+  }, [preferredRecordingQuality]);
 
   // Effect to lock body scroll when the mobile menu is open.
   useEffect(() => {
@@ -68,6 +75,7 @@ export const Header: React.FC<HeaderProps> = (props) => {
   const handleSavePreferences = () => {
     setTheme(localTheme);
     setPreferredLanguage(localLanguage);
+    setRecordingQuality(localRecordingQuality);
     setIsMenuOpen(false); // Close menu
   };
   
@@ -495,6 +503,14 @@ export const Header: React.FC<HeaderProps> = (props) => {
                         <div role="radiogroup" className="flex items-center gap-4">
                             <button role="radio" aria-checked={localLanguage === 'pt'} onClick={() => setLocalLanguage('pt')} className={`text-sm font-medium transition-colors ${localLanguage === 'pt' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Português</button>
                             <button role="radio" aria-checked={localLanguage === 'en'} onClick={() => setLocalLanguage('en')} className={`text-sm font-medium transition-colors ${localLanguage === 'en' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Inglês</button>
+                        </div>
+                    </div>
+                    {/* Recording Quality Selector */}
+                    <div>
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Qualidade de Gravação</p>
+                        <div role="radiogroup" className="flex items-center gap-4">
+                            <button role="radio" aria-checked={localRecordingQuality === 'standard'} onClick={() => setLocalRecordingQuality('standard')} className={`text-sm font-medium transition-colors ${localRecordingQuality === 'standard' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Padrão</button>
+                            <button role="radio" aria-checked={localRecordingQuality === 'high'} onClick={() => setLocalRecordingQuality('high')} className={`text-sm font-medium transition-colors ${localRecordingQuality === 'high' ? 'text-[#24a9c5] font-bold underline' : 'text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] hover:underline'}`}>Alta</button>
                         </div>
                     </div>
                      {/* Save Button */}

@@ -379,3 +379,4 @@ export type ListItemType = (Transcription & { type: 'transcription' }) | (AudioF
 
 export type Theme = 'light' | 'dark';
 export type PreferredLanguage = 'pt' | 'en';
+export type RecordingQuality = 'standard' | 'high';

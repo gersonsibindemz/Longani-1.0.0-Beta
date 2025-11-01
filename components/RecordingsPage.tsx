@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { VoiceRecorder } from './VoiceRecorder';
 import { getAllAudioFiles, addAudioFile, deleteAudioFile, updateAudioFile, getAudioRecording } from '../utils/db';
-import { AudioFile, AudioRecording } from '../types';
+import { AudioFile, AudioRecording, RecordingQuality } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { Loader } from './Loader';
 import { DropdownMenu } from './DropdownMenu';
@@ -47,9 +47,10 @@ interface RecordingsPageProps {
     onTranscribe: (audio: AudioRecording) => void;
     onPlayAudio: (audio: AudioRecording) => void;
     uploadDisabled?: boolean;
+    preferredQuality: RecordingQuality;
 }
 
-export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, onPlayAudio, uploadDisabled }) => {
+export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, onPlayAudio, uploadDisabled, preferredQuality }) => {
     const { profile } = useAuth();
     const [recordings, setRecordings] = useState<AudioFile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -101,7 +102,8 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
         setIsUploading(true);
         setError(null);
 
-        const uploadPromises = Array.from(files).map(file =>
+        // Fix: Explicitly type `file` as `File` to resolve TypeScript inference issue.
+        const uploadPromises = Array.from(files).map((file: File) =>
             addAudioFile({ name: file.name, audioBlob: file }, profile.id)
         );
 
@@ -262,7 +264,7 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
                     </div>
                 </div>
                 <div className="mb-8">
-                    <VoiceRecorder onSave={handleSaveRecording} />
+                    <VoiceRecorder onSave={handleSaveRecording} preferredQuality={preferredQuality} />
                 </div>
                 {renderList("Ficheiros Carregados", uploadedFiles)}
                 {renderList("Gravações Salvas", savedRecordings)}
