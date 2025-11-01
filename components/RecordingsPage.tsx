@@ -8,7 +8,7 @@ import { DropdownMenu } from './DropdownMenu';
 import { MoreVerticalIcon, EditIcon, StarIcon, StarOutlineIcon, TrashIcon, WaveformIcon, PlayIcon, UploadIcon, CheckIcon } from './Icons';
 import { ConfirmationModal } from './ConfirmationModal';
 import { PropertiesModal } from './PropertiesModal';
-import { formatPlayerTime } from '../utils/audioUtils';
+import { formatPlayerTime, getFriendlyErrorMessage } from '../utils/audioUtils';
 
 const RenameModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (newName: string) => Promise<void>; currentName: string }> = ({ isOpen, onClose, onSave, currentName }) => {
     const [name, setName] = useState(currentName);
@@ -43,7 +43,13 @@ const RenameModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (new
     );
 };
 
-export const RecordingsPage: React.FC<{ onTranscribe: (audio: AudioRecording) => void, onPlayAudio: (audio: AudioRecording) => void }> = ({ onTranscribe, onPlayAudio }) => {
+interface RecordingsPageProps {
+    onTranscribe: (audio: AudioRecording) => void;
+    onPlayAudio: (audio: AudioRecording) => void;
+    uploadDisabled?: boolean;
+}
+
+export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, onPlayAudio, uploadDisabled }) => {
     const { profile } = useAuth();
     const [recordings, setRecordings] = useState<AudioFile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -84,7 +90,7 @@ export const RecordingsPage: React.FC<{ onTranscribe: (audio: AudioRecording) =>
             fetchData();
         } catch (err) {
             console.error("Failed to save recording", err);
-            setError("Não foi possível guardar a gravação.");
+            setError(getFriendlyErrorMessage(err));
         }
     };
     
@@ -101,19 +107,9 @@ export const RecordingsPage: React.FC<{ onTranscribe: (audio: AudioRecording) =>
 
         try {
             await Promise.all(uploadPromises);
-        // FIX: The caught error `err` is of type `unknown`. Accessing properties like
-        // `err.name` directly is a type error. This handles it safely by checking if
-        // the error is an `instanceof Error` before accessing `err.message`. This likely
-        // fixes the "Property 'name' does not exist on type 'unknown'" error,
-        // even if the linter reports the wrong line number for the catch block.
-        // The Blob-related error is likely from a failed upload which this now handles.
         } catch (err) {
             console.error("Failed to upload files", err);
-            if (err instanceof Error) {
-                setError(`Ocorreu um erro ao carregar um ou mais ficheiros: ${err.message}`);
-            } else {
-                setError("Ocorreu um erro ao carregar um ou mais ficheiros. Verifique se os ficheiros não são demasiado grandes.");
-            }
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setIsUploading(false);
             fetchData(); // Refresh the list
@@ -169,7 +165,7 @@ export const RecordingsPage: React.FC<{ onTranscribe: (audio: AudioRecording) =>
             if (action === 'properties') setItemForProperties(recording);
         } catch (err) {
             console.error(`Failed to perform action ${action}`, err);
-            setError("Não foi possível carregar o ficheiro de áudio.");
+            setError(getFriendlyErrorMessage(err));
         } finally {
             setActionLoading(null);
         }
@@ -241,22 +237,29 @@ export const RecordingsPage: React.FC<{ onTranscribe: (audio: AudioRecording) =>
                 className="hidden"
                 accept="audio/*"
                 multiple
-                disabled={isUploading}
+                disabled={isUploading || uploadDisabled}
             />
             <div className="max-w-5xl mx-auto">
                 <div className="flex justify-between items-center mb-6">
                     <h1 className="text-2xl md:text-3xl font-bold text-gray-800 dark:text-gray-200">
                         Gravações
                     </h1>
-                     <button
-                        onClick={() => fileInputRef.current?.click()}
-                        disabled={isUploading}
-                        className="flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#24a9c5] hover:bg-[#1e8a9f] disabled:opacity-50"
-                        title="Carregar ficheiros de áudio do dispositivo"
-                    >
-                        {isUploading ? <Loader className="w-5 h-5" /> : <UploadIcon className="w-5 h-5" />}
-                        <span>Carregar</span>
-                    </button>
+                     <div className="text-right">
+                        <button
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={isUploading || uploadDisabled}
+                            className="flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#24a9c5] hover:bg-[#1e8a9f] disabled:opacity-50"
+                            title={uploadDisabled ? "Disponível nos planos pagos" : "Carregar ficheiros de áudio do dispositivo"}
+                        >
+                            {isUploading ? <Loader className="w-5 h-5" /> : <UploadIcon className="w-5 h-5" />}
+                            <span>Carregar</span>
+                        </button>
+                        {uploadDisabled && (
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                Disponível nos planos pagos
+                            </p>
+                        )}
+                    </div>
                 </div>
                 <div className="mb-8">
                     <VoiceRecorder onSave={handleSaveRecording} />

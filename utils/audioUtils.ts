@@ -370,15 +370,52 @@ export const translateLanguageName = (englishNames: string | null): string => {
 // --- Trial Period Utilities ---
 
 export const TRIAL_PERIOD_DAYS = 15;
-const TRIAL_PERIOD_MS = TRIAL_PERIOD_DAYS * 24 * 60 * 60 * 1000;
 
 /**
- * Gets the expiration date of the trial.
+ * Gets the trial end date based on a specific timezone (GMT+2).
+ * A trial day ends at 00:01 in the target timezone.
  * @param createdAt The ISO date string when the account was created.
- * @returns The trial end date.
+ * @returns The trial end date as a Date object.
  */
 export const getTrialEndDate = (createdAt: string): Date => {
-    return new Date(new Date(createdAt).getTime() + TRIAL_PERIOD_MS);
+    const tz = 'Africa/Maputo'; // GMT+2 timezone
+
+    try {
+        // Use Intl.DateTimeFormat to reliably get date parts in the target timezone
+        const formatter = new Intl.DateTimeFormat('en-CA', { // 'en-CA' gives YYYY-MM-DD format
+            timeZone: tz,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+        });
+        
+        const parts = formatter.formatToParts(new Date(createdAt));
+        const year = parts.find(p => p.type === 'year')?.value;
+        const month = parts.find(p => p.type === 'month')?.value;
+        const day = parts.find(p => p.type === 'day')?.value;
+
+        if (!year || !month || !day) {
+            // Fallback to original logic if Intl API fails for some reason
+            console.warn("Intl.DateTimeFormat failed, falling back to simple date math for trial period.");
+            return new Date(new Date(createdAt).getTime() + TRIAL_PERIOD_DAYS * 24 * 60 * 60 * 1000);
+        }
+
+        // The start of the creation day is 00:01 on that day in the target timezone.
+        // We construct an ISO string with the timezone offset to create a correct Date object.
+        const creationDayStartString = `${year}-${month}-${day}T00:01:00+02:00`;
+        const creationDayStartDate = new Date(creationDayStartString);
+
+        // The trial ends exactly TRIAL_PERIOD_DAYS after the start of the creation day.
+        const trialEndDate = new Date(creationDayStartDate.getTime());
+        trialEndDate.setDate(trialEndDate.getDate() + TRIAL_PERIOD_DAYS);
+        
+        return trialEndDate;
+
+    } catch (e) {
+        // Catch errors from Intl API (e.g., invalid timezone) and fallback
+        console.error("Error calculating trial end date with timezone:", e);
+        return new Date(new Date(createdAt).getTime() + TRIAL_PERIOD_DAYS * 24 * 60 * 60 * 1000);
+    }
 };
 
 /**
@@ -388,7 +425,8 @@ export const getTrialEndDate = (createdAt: string): Date => {
  */
 export const isTrialActive = (createdAt?: string): boolean => {
     if (!createdAt) return false; // No trial if no creation date
-    return Date.now() < (new Date(createdAt).getTime() + TRIAL_PERIOD_MS);
+    const trialEndDate = getTrialEndDate(createdAt);
+    return Date.now() < trialEndDate.getTime();
 };
 
 /**
@@ -399,7 +437,7 @@ export const isTrialActive = (createdAt?: string): boolean => {
 export const getTrialDaysRemaining = (createdAt?: string): number => {
     if (!createdAt) return 0;
     
-    const trialEndTime = new Date(createdAt).getTime() + TRIAL_PERIOD_MS;
+    const trialEndTime = getTrialEndDate(createdAt).getTime();
     const now = Date.now();
 
     if (now >= trialEndTime) {
@@ -407,6 +445,8 @@ export const getTrialDaysRemaining = (createdAt?: string): number => {
     }
 
     const diffMs = trialEndTime - now;
+    // Each day is a 24-hour block. Math.ceil ensures that any fraction of a day
+    // counts as a full day remaining.
     return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 };
 

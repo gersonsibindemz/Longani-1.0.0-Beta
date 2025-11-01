@@ -1,3 +1,5 @@
+
+
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { transcribeAudio, cleanTranscript, translateText, refineTranscript, detectLanguage } from './services/geminiService';
 import { Header, longaniLogoUrl } from './components/Header';
@@ -938,16 +940,22 @@ const App: React.FC = () => {
       case 'history':
         return <HistoryPage />;
       case 'recordings':
-        return <RecordingsPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} />;
+        return <RecordingsPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} uploadDisabled={currentUser?.plan === 'trial'} />;
       case 'favorites':
+        if (currentUser?.plan === 'trial') {
+            return <FeatureLockedPage featureName="Favoritos" requiredPlan="Básico ou superior" />;
+        }
         return <FavoritesPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} />;
       case 'teams':
-        const canAccessTeams = currentUser?.plan === 'ideal' || currentUser?.plan === 'premium' || (currentUser?.plan === 'trial' && !trialHasExpired);
+        const canAccessTeams = currentUser?.plan === 'ideal' || currentUser?.plan === 'premium';
         if (!canAccessTeams) {
             return <FeatureLockedPage featureName="Equipas" requiredPlan="Ideal ou superior" />;
         }
         return <TeamsPage />;
       case 'translations':
+        if (currentUser?.plan === 'trial') {
+            return <FeatureLockedPage featureName="Traduções" requiredPlan="Básico ou superior" />;
+        }
         return <TranslationsPage />;
       case 'plans':
         return <PlansPage />;
@@ -1027,35 +1035,32 @@ const App: React.FC = () => {
                 </div>
             )}
             {!audioFile && (
-              <div className="flex-grow flex flex-col justify-between">
-                <div className="pt-20"> {/* Wrapper for top content */}
-                    <div className="flex-grow flex flex-col justify-center items-center">
-                        <div className="max-w-3xl mx-auto w-full bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
-                          <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
-                            <FileUpload key={fileInputKey} onFileChange={handleFileChange} disabled={isProcessing} fileSelected={fileSelectionSuccess} />
-                            <GoogleDrivePicker onFileImported={handleFileChange} />
+              <div className="flex-grow flex flex-col">
+                <div className="flex-grow flex flex-col justify-center items-center">
+                    <div className="max-w-3xl mx-auto w-full bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
+                      <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
+                        <FileUpload key={fileInputKey} onFileChange={handleFileChange} disabled={isProcessing} fileSelected={fileSelectionSuccess} />
+                        <GoogleDrivePicker onFileImported={handleFileChange} />
+                      </div>
+                      <p className="text-gray-500 dark:text-gray-400 text-xs mt-4 text-center">
+                        Ficheiros de áudio suportados (.mp3, .wav, .m4a, etc.) com um limite de {MAX_FILE_SIZE_MB}MB.
+                      </p>
+                      {preferredLanguage !== 'pt' && (
+                          <div className="text-center text-sm text-cyan-700 dark:text-cyan-400 mt-4 bg-cyan-50 dark:bg-cyan-900/30 p-3 rounded-lg border border-cyan-100 dark:border-cyan-800">
+                              <InfoIcon className="w-4 h-4 inline-block mr-2 align-middle" />
+                              <span className="align-middle">Nota: O texto formatado final será entregue em <strong>{languageMap[preferredLanguage]}</strong>.</span>
                           </div>
-                          <p className="text-gray-500 dark:text-gray-400 text-xs mt-4 text-center">
-                            Ficheiros de áudio suportados (.mp3, .wav, .m4a, etc.) com um limite de {MAX_FILE_SIZE_MB}MB.
-                          </p>
-                          {preferredLanguage !== 'pt' && (
-                              <div className="text-center text-sm text-cyan-700 dark:text-cyan-400 mt-4 bg-cyan-50 dark:bg-cyan-900/30 p-3 rounded-lg border border-cyan-100 dark:border-cyan-800">
-                                  <InfoIcon className="w-4 h-4 inline-block mr-2 align-middle" />
-                                  <span className="align-middle">Nota: O texto formatado final será entregue em <strong>{languageMap[preferredLanguage]}</strong>.</span>
-                              </div>
-                          )}
-                        </div>
-                        <div className="my-4 flex items-center w-full max-w-xs text-center" aria-hidden="true">
-                            <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
-                            <span className="flex-shrink mx-4 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Ou</span>
-                            <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
-                        </div>
-                        <div className="text-center text-sm text-gray-600 dark:text-gray-400">
-                            Pode <button onClick={() => window.location.hash = '#/recordings'} className="font-medium text-[#24a9c5] hover:underline focus:outline-none focus:ring-1 focus:ring-[#24a9c5] rounded">gravar um áudio</button>.
-                        </div>
+                      )}
+                    </div>
+                    <div className="my-4 flex items-center w-full max-w-xs text-center" aria-hidden="true">
+                        <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                        <span className="flex-shrink mx-4 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Ou</span>
+                        <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
+                    </div>
+                    <div className="text-center text-sm text-gray-600 dark:text-gray-400">
+                        Pode <button onClick={() => window.location.hash = '#/recordings'} className="font-medium text-[#24a9c5] hover:underline focus:outline-none focus:ring-1 focus:ring-[#24a9c5] rounded">gravar um áudio</button>.
                     </div>
                 </div>
-                {/* Bottom part */}
                 {recentHistorySection}
               </div>
             )}
@@ -1278,7 +1283,7 @@ const App: React.FC = () => {
                         <button
                             onClick={handleSaveTranscription}
                             disabled={isSaving}
-                            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-green-600 text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-green-700 transition-all disabled:bg-gray-400"
+                            className="w-full sm:w-auto flex items-center justify-center gap-2 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-semibold py-3 px-8 rounded-lg shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isSaving ? <Loader className="w-5 h-5" /> : <SaveIcon className="w-5 h-5" />}
                             <span>{isSaving ? 'A Guardar...' : 'Guardar Transcrição'}</span>
@@ -1292,7 +1297,7 @@ const App: React.FC = () => {
                     )}
                     <button
                         onClick={handleReset}
-                        className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#24a9c5] text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-[#1e8a9f] transition-all"
+                        className="w-full sm:w-auto flex items-center justify-center gap-2 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-semibold py-3 px-8 rounded-lg shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
                     >
                         <ReloadIcon className="w-5 h-5" />
                         <span>Transcrever Novo Ficheiro</span>
@@ -1313,7 +1318,7 @@ const App: React.FC = () => {
                                 return;
                             }
                             
-                            const canAccessPremium = currentUser?.plan === 'premium' || (currentUser?.plan === 'trial' && !trialHasExpired);
+                            const canAccessPremium = currentUser?.plan === 'premium';
 
                             if (!canAccessPremium) {
                                 setError(

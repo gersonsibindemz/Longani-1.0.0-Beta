@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Loader } from './Loader';
 import { longaniLogoUrl } from './Header';
 import { useAuth } from '../contexts/AuthContext';
+import { EyeIcon, EyeOffIcon } from './Icons';
 
 export const SignUpPage: React.FC = () => {
   const { signUp } = useAuth();
@@ -12,6 +13,8 @@ export const SignUpPage: React.FC = () => {
   const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false);
+  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -109,32 +112,52 @@ export const SignUpPage: React.FC = () => {
                   className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Palavra-passe <span className="text-xs font-normal text-gray-500 dark:text-gray-400">(Mínimo de 6 caracteres)</span>
                 </label>
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-[#24a9c5] focus:border-[#24a9c5] sm:text-sm"
-                />
+                <div className="relative mt-1">
+                  <input
+                    id="password"
+                    name="password"
+                    type={isPasswordVisible ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-[#24a9c5] focus:border-[#24a9c5] sm:text-sm pr-10"
+                  />
+                  <button
+                      type="button"
+                      onClick={() => setIsPasswordVisible(!isPasswordVisible)}
+                      className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                      aria-label={isPasswordVisible ? "Ocultar palavra-passe" : "Mostrar palavra-passe"}
+                  >
+                      {isPasswordVisible ? <EyeOffIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                  </button>
+                </div>
               </div>
               <div>
                 <label htmlFor="confirm-password"
                   className="block text-sm font-medium text-gray-700 dark:text-gray-300">
                   Confirmar Palavra-passe
                 </label>
-                <input
-                  id="confirm-password"
-                  name="confirm-password"
-                  type="password"
-                  autoComplete="new-password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="mt-1 block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-[#24a9c5] focus:border-[#24a9c5] sm:text-sm"
-                />
+                <div className="relative mt-1">
+                  <input
+                    id="confirm-password"
+                    name="confirm-password"
+                    type={isConfirmPasswordVisible ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="block w-full px-3 py-2 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-[#24a9c5] focus:border-[#24a9c5] sm:text-sm pr-10"
+                  />
+                   <button
+                        type="button"
+                        onClick={() => setIsConfirmPasswordVisible(!isConfirmPasswordVisible)}
+                        className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+                        aria-label={isConfirmPasswordVisible ? "Ocultar palavra-passe" : "Mostrar palavra-passe"}
+                    >
+                        {isConfirmPasswordVisible ? <EyeOffIcon className="h-5 w-5" /> : <EyeIcon className="h-5 w-5" />}
+                    </button>
+                </div>
               </div>
             </div>
             <div className="mt-6">

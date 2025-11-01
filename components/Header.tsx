@@ -163,28 +163,32 @@ export const Header: React.FC<HeaderProps> = (props) => {
                     Minhas Transcrições
                   </a>
                 </li>
-                <li>
-                  <a
-                    href="#/favorites"
-                    onClick={handleNavClick}
-                    className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                      page === 'favorites' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                    }`}
-                  >
-                    Favoritos
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="#/translations"
-                    onClick={handleNavClick}
-                    className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                      page === 'translations' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                    }`}
-                  >
-                    Traduções
-                  </a>
-                </li>
+                {currentUser?.plan !== 'trial' && (
+                  <li>
+                    <a
+                      href="#/favorites"
+                      onClick={handleNavClick}
+                      className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                        page === 'favorites' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      Favoritos
+                    </a>
+                  </li>
+                )}
+                {currentUser?.plan !== 'trial' && (
+                  <li>
+                    <a
+                      href="#/translations"
+                      onClick={handleNavClick}
+                      className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                        page === 'translations' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      Traduções
+                    </a>
+                  </li>
+                )}
                  <li>
                   <a
                     href="#/plans"
@@ -196,17 +200,19 @@ export const Header: React.FC<HeaderProps> = (props) => {
                     Planos
                   </a>
                 </li>
-                <li>
-                  <a
-                    href="#/teams"
-                    onClick={handleNavClick}
-                    className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                      page === 'teams' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                    }`}
-                  >
-                    Equipa
-                  </a>
-                </li>
+                {(currentUser?.plan === 'ideal' || currentUser?.plan === 'premium') && (
+                  <li>
+                    <a
+                      href="#/teams"
+                      onClick={handleNavClick}
+                      className={`font-medium hover:text-[#24a9c5] transition-colors ${
+                        page === 'teams' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
+                      }`}
+                    >
+                      Equipa
+                    </a>
+                  </li>
+                )}
                 {currentUser ? (
                   <>
                     <li>
@@ -324,28 +330,30 @@ export const Header: React.FC<HeaderProps> = (props) => {
                         </div>
                     </div>
                 )}
-                <div>
-                    <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400 mb-1">
-                        <span>Uso Mensal</span>
-                        <span className="font-semibold">
-                            {limitInMinutes === null
-                                ? `${usageMinutes} min. usados`
-                                : `${usageMinutes} / ${limitInMinutes} min`
-                            }
-                        </span>
+                {currentUser?.plan !== 'trial' && (
+                    <div>
+                        <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400 mb-1">
+                            <span>Uso Mensal</span>
+                            <span className="font-semibold">
+                                {limitInMinutes === null
+                                    ? `${usageMinutes} min. usados`
+                                    : `${usageMinutes} / ${limitInMinutes} min`
+                                }
+                            </span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
+                            <div
+                                className="bg-cyan-500 h-1.5 rounded-full transition-all duration-500"
+                                style={{ width: `${currentPlanLimit === Infinity ? 100 : Math.min(100, usagePercentage)}%` }}
+                                role="progressbar"
+                                aria-valuenow={usageMinutes}
+                                aria-valuemin={0}
+                                aria-valuemax={limitInMinutes === null ? usageMinutes : limitInMinutes}
+                                aria-label={`Uso mensal: ${usageMinutes} de ${limitInMinutes === null ? 'ilimitados' : limitInMinutes} minutos`}
+                            ></div>
+                        </div>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
-                        <div
-                            className="bg-cyan-500 h-1.5 rounded-full transition-all duration-500"
-                            style={{ width: `${currentPlanLimit === Infinity ? 100 : Math.min(100, usagePercentage)}%` }}
-                            role="progressbar"
-                            aria-valuenow={usageMinutes}
-                            aria-valuemin={0}
-                            aria-valuemax={limitInMinutes === null ? usageMinutes : limitInMinutes}
-                            aria-label={`Uso mensal: ${usageMinutes} de ${limitInMinutes === null ? 'ilimitados' : limitInMinutes} minutos`}
-                        ></div>
-                    </div>
-                </div>
+                )}
             </div>}
 
             {/* Navigation */}
@@ -388,39 +396,45 @@ export const Header: React.FC<HeaderProps> = (props) => {
                               Minhas Transcrições
                           </a>
                         </li>
-                        <li>
-                          <a
-                              href="#/favorites"
-                              onClick={handleNavClick}
-                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                                page === 'favorites' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
-                              }`}
-                          >
-                              Favoritos
-                          </a>
-                        </li>
-                         <li>
-                          <a
-                              href="#/translations"
-                              onClick={handleNavClick}
-                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                                page === 'translations' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
-                              }`}
-                          >
-                              Traduções
-                          </a>
-                        </li>
-                         <li>
-                          <a
-                              href="#/teams"
-                              onClick={handleNavClick}
-                              className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
-                                page === 'teams' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
-                              }`}
-                          >
-                              Equipa
-                          </a>
-                        </li>
+                        {currentUser?.plan !== 'trial' && (
+                          <li>
+                            <a
+                                href="#/favorites"
+                                onClick={handleNavClick}
+                                className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                  page === 'favorites' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                                }`}
+                            >
+                                Favoritos
+                            </a>
+                          </li>
+                        )}
+                         {currentUser?.plan !== 'trial' && (
+                          <li>
+                            <a
+                                href="#/translations"
+                                onClick={handleNavClick}
+                                className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                  page === 'translations' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                                }`}
+                            >
+                                Traduções
+                            </a>
+                          </li>
+                         )}
+                         {(currentUser?.plan === 'ideal' || currentUser?.plan === 'premium') && (
+                          <li>
+                            <a
+                                href="#/teams"
+                                onClick={handleNavClick}
+                                className={`block px-4 py-3 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                                  page === 'teams' ? 'text-[#24a9c5] bg-gray-100 dark:bg-gray-700' : 'text-gray-700 dark:text-gray-300'
+                                }`}
+                            >
+                                Equipa
+                            </a>
+                          </li>
+                         )}
                          <li>
                           <a
                               href="#/profile"
