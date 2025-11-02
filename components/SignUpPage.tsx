@@ -60,7 +60,6 @@ export const SignUpPage: React.FC = () => {
         }
         setIsLoading(false);
     } else {
-        sessionStorage.setItem('signup_success', 'Conta criada com sucesso! Por favor, confirme o seu email antes de iniciar a sessão.');
         window.location.hash = '#/login';
     }
   };
