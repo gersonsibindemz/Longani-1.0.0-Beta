@@ -1,9 +1,3 @@
-
-
-
-
-
-
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { transcribeAudio, cleanTranscript, translateText, refineTranscript, detectLanguage } from './services/geminiService';
 import { Header, longaniLogoUrl } from './components/Header';
@@ -12,10 +6,10 @@ import { TranscriptDisplay } from './components/TranscriptDisplay';
 import { ProgressBar } from './components/ProgressBar';
 import { Loader } from './components/Loader';
 import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon, SearchIcon, WaveformIcon, TranslateIcon, UsersIcon, SaveIcon, CheckIcon } from './components/Icons';
-import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, formatProcessingTime, translateLanguageName, isTrialActive, getTrialDaysRemaining, calculateMonthlyUsage, getCurrentUsagePeriod, getPlanLimits } from './utils/audioUtils';
+import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, formatProcessingTime, translateLanguageName, isTrialActive, getTrialDaysRemaining, calculateMonthlyUsage, getCurrentUsagePeriod, getPlanLimits, TRIAL_MAX_FILES, TRIAL_MAX_FILE_SIZE_MB, TRIAL_MAX_DURATION_SECONDS } from './utils/audioUtils';
 import { HistoryPage } from './components/HistoryPage';
 import { RecordingsPage } from './components/RecordingsPage';
-import { addTranscription, addAudioFile, getAllTranscriptions, getTranscriptionById, getAudioRecording, updateTranscription, deleteTranscription, getAudioFilesSince, getTranscriptionByAudioId } from './utils/db';
+import { addTranscription, addAudioFile, getAllTranscriptions, getTranscriptionById, getAudioRecording, updateTranscription, deleteTranscription, getAudioFilesSince, getTranscriptionByAudioId, countUserAudioFiles } from './utils/db';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FavoritesPage } from './components/FavoritesPage';
 import { TranslationsPage } from './components/TranslationsPage';
@@ -280,6 +274,7 @@ const App: React.FC = () => {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [monthlyUsage, setMonthlyUsage] = useState(0);
   const [isUsageLocked, setIsUsageLocked] = useState(false);
+  const [trialUsageCount, setTrialUsageCount] = useState(0);
   
   // State for real-time progress and final stats
   const [audioDuration, setAudioDuration] = useState<number>(0);
@@ -302,7 +297,8 @@ const App: React.FC = () => {
 
   const isEffectivelyDark = theme === 'dark';
 
-  const MAX_FILE_SIZE_MB = 100;
+  const isTrialPlan = currentUser?.plan === 'trial';
+  const MAX_FILE_SIZE_MB = isTrialPlan ? TRIAL_MAX_FILE_SIZE_MB : 100;
   const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
   const loadTranscriptionForEditing = async (id: string) => {
@@ -384,7 +380,7 @@ const App: React.FC = () => {
   }, [page]);
 
   useEffect(() => {
-    const calculateUsage = async () => {
+    const calculateUsageAndLimits = async () => {
         if (currentUser) {
             try {
                 const usagePeriod = getCurrentUsagePeriod(currentUser);
@@ -395,6 +391,11 @@ const App: React.FC = () => {
                 const planLimits = getPlanLimits();
                 const currentPlanLimit = planLimits[currentUser.plan || 'basico'];
                 setIsUsageLocked(usage >= currentPlanLimit && currentPlanLimit !== Infinity);
+                
+                if (currentUser.plan === 'trial') {
+                    const count = await countUserAudioFiles(currentUser.id);
+                    setTrialUsageCount(count);
+                }
 
             } catch (e) {
                 let errorDetails = '';
@@ -410,10 +411,11 @@ const App: React.FC = () => {
         } else {
             setMonthlyUsage(0);
             setIsUsageLocked(false);
+            setTrialUsageCount(0);
         }
     };
 
-    calculateUsage();
+    calculateUsageAndLimits();
   }, [currentUser, page, processStage]);
 
   // Load preferences from user profile
@@ -560,10 +562,17 @@ const App: React.FC = () => {
     });
   };
 
+    const isTrialUploadsLocked = isTrialPlan && trialUsageCount >= TRIAL_MAX_FILES;
+
   const handleFileChange = async (file: File | null) => {
     handleReset();
 
     if (file) {
+        if (isTrialUploadsLocked) {
+            setError(`Atingiu o limite de ${TRIAL_MAX_FILES} ficheiros para o plano Trial. Faça um upgrade para continuar.`);
+            setFileInputKey(Date.now());
+            return;
+        }
       if (file.size > MAX_FILE_SIZE_BYTES) {
         setError(`O ficheiro excede o limite de ${MAX_FILE_SIZE_MB} MB. Por favor, escolha um ficheiro mais pequeno.`);
         setAudioFile(null);
@@ -594,6 +603,13 @@ const App: React.FC = () => {
 
       try {
         const duration = await getAudioDuration(file);
+        if (isTrialPlan && duration > TRIAL_MAX_DURATION_SECONDS) {
+            setError(`O ficheiro excede o limite de ${TRIAL_MAX_DURATION_SECONDS / 60} minutos de duração para o plano Trial.`);
+            setAudioFile(null);
+            setAudioUrl(null);
+            setFileInputKey(Date.now());
+            return;
+        }
         setAudioDuration(duration); // Store numeric duration for progress calculation
         setEstimatedTime(estimateProcessingTime(duration));
         const potential = estimatePrecisionPotential(file.name);
@@ -729,7 +745,7 @@ const App: React.FC = () => {
     const trialDaysRemaining = getTrialDaysRemaining(currentUser?.created_at);
     const trialHasExpired = !!currentUser?.created_at && !trialIsActive;
     const isTrialExpiredLocked = currentUser?.plan === 'trial' && trialHasExpired;
-    const isFeatureLocked = isTrialExpiredLocked || isUsageLocked;
+    const isFeatureLocked = isTrialExpiredLocked || isUsageLocked || isTrialUploadsLocked;
 
   const handleProcessAudio = useCallback(async () => {
     if (!audioFile || !currentUser) {
@@ -741,6 +757,8 @@ const App: React.FC = () => {
         let lockMessage;
         if (isTrialExpiredLocked) {
             lockMessage = <>O seu período de teste terminou. Para continuar a transcrever, é necessário fazer um upgrade.</>;
+        } else if (isTrialUploadsLocked) {
+            lockMessage = <>Atingiu o limite de {TRIAL_MAX_FILES} ficheiros do seu plano Trial. Para continuar a transcrever, faça um upgrade.</>;
         } else { // Must be usage locked
             lockMessage = <>O seu limite de utilização mensal foi atingido. Para obter mais tempo de transcrição, faça um upgrade ou aguarde pelo próximo ciclo.</>;
         }
@@ -806,7 +824,7 @@ const App: React.FC = () => {
       setError(friendlyMessage);
       setProcessStage('idle');
     }
-  }, [audioFile, initialPrecision, handleCloseNowPlaying, preferredLanguage, detectedLanguage, currentUser, isFeatureLocked, isTrialExpiredLocked, isUsageLocked]);
+  }, [audioFile, initialPrecision, handleCloseNowPlaying, preferredLanguage, detectedLanguage, currentUser, isFeatureLocked, isTrialExpiredLocked, isUsageLocked, isTrialUploadsLocked]);
 
   const handleSaveTranscription = async () => {
     if (!audioFile || !profile || isSaving) return;
@@ -1024,10 +1042,20 @@ const App: React.FC = () => {
             {!audioFile && (
               <div className="flex-grow flex flex-col">
                 <div className="flex-grow flex flex-col justify-center items-center">
+                    {isTrialPlan && (
+                        <div className="max-w-3xl mx-auto w-full p-3 mb-4 bg-cyan-50 dark:bg-cyan-900/30 rounded-lg border border-cyan-100 dark:border-cyan-800 text-center animate-fade-in">
+                            <p className="font-semibold text-cyan-800 dark:text-cyan-200">
+                                Plano Trial Ativo
+                            </p>
+                            <p className="text-sm text-cyan-700 dark:text-cyan-300 mt-1">
+                                Ficheiros: {trialUsageCount} / {TRIAL_MAX_FILES} | Limites: {TRIAL_MAX_FILE_SIZE_MB}MB e {TRIAL_MAX_DURATION_SECONDS / 60} min por ficheiro.
+                            </p>
+                        </div>
+                    )}
                     <div className="max-w-3xl mx-auto w-full bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
                       <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
-                        <FileUpload key={fileInputKey} onFileChange={handleFileChange} disabled={isProcessing} fileSelected={fileSelectionSuccess} />
-                        <GoogleDrivePicker onFileImported={handleFileChange} />
+                        <FileUpload key={fileInputKey} onFileChange={handleFileChange} disabled={isProcessing || isTrialUploadsLocked} fileSelected={fileSelectionSuccess} />
+                        <GoogleDrivePicker onFileImported={handleFileChange} disabled={isTrialUploadsLocked}/>
                       </div>
                       <p className="text-gray-500 dark:text-gray-400 text-xs mt-4 text-center">
                         Ficheiros de áudio suportados (.mp3, .wav, .m4a, etc.) com um limite de {MAX_FILE_SIZE_MB}MB.
@@ -1297,6 +1325,8 @@ const App: React.FC = () => {
                                 let lockMessage;
                                 if (isTrialExpiredLocked) {
                                     lockMessage = <>O seu período de teste terminou. Para aceder a esta funcionalidade, é necessário fazer um upgrade.</>;
+                                } else if (isTrialUploadsLocked) {
+                                    lockMessage = <>Atingiu o limite de ficheiros do seu plano Trial. Para usar esta funcionalidade, faça um upgrade.</>;
                                 } else {
                                     lockMessage = <>O seu limite de utilização mensal foi atingido. Para continuar a usar as funcionalidades, é necessário fazer um upgrade.</>;
                                 }

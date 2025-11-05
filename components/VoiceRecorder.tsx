@@ -8,6 +8,7 @@ import { RecordingQuality } from '../types';
 interface VoiceRecorderProps {
   onSave: (audioBlob: Blob) => void;
   preferredQuality: RecordingQuality;
+  disabled?: boolean;
 }
 
 type RecordingStatus = 'idle' | 'permission' | 'recording' | 'stopped';
@@ -17,7 +18,7 @@ const qualityProfiles: { [key in RecordingQuality]: { label: string, audioBitsPe
   high: { label: 'Alta Qualidade (256kbps)', audioBitsPerSecond: 256000 }
 };
 
-export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSave, preferredQuality }) => {
+export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSave, preferredQuality, disabled = false }) => {
   const [status, setStatus] = useState<RecordingStatus>('idle');
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -161,10 +162,10 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSave, preferredQ
         <div className="mt-2 sm:mt-0" role="radiogroup" aria-labelledby="quality-label">
             <span id="quality-label" className="text-sm font-medium text-gray-600 dark:text-gray-400 mr-2 sr-only">Qualidade:</span>
             <div className="flex items-center gap-2">
-                <button role="radio" aria-checked={quality === 'standard'} onClick={() => setQuality('standard')} disabled={status === 'recording' || status === 'permission'} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${quality === 'standard' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                <button role="radio" aria-checked={quality === 'standard'} onClick={() => setQuality('standard')} disabled={status === 'recording' || status === 'permission' || disabled} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${quality === 'standard' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'} disabled:opacity-50 disabled:cursor-not-allowed`}>
                     {qualityProfiles.standard.label}
                 </button>
-                <button role="radio" aria-checked={quality === 'high'} onClick={() => setQuality('high')} disabled={status === 'recording' || status === 'permission'} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${quality === 'high' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'} disabled:opacity-50 disabled:cursor-not-allowed`}>
+                <button role="radio" aria-checked={quality === 'high'} onClick={() => setQuality('high')} disabled={status === 'recording' || status === 'permission' || disabled} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${quality === 'high' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'} disabled:opacity-50 disabled:cursor-not-allowed`}>
                     {qualityProfiles.high.label}
                 </button>
             </div>
@@ -180,7 +181,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSave, preferredQ
           <div className="flex items-center gap-4">
             <button
               onClick={status === 'recording' ? stopRecording : startRecording}
-              disabled={status === 'permission'}
+              disabled={status === 'permission' || disabled}
               className={`w-16 h-16 rounded-full flex items-center justify-center text-white transition-all duration-300 transform hover:scale-105 disabled:opacity-50
                 ${status === 'recording' ? 'bg-red-600 hover:bg-red-700' : 'bg-[#24a9c5] hover:bg-[#1e8a9f]'}`}
               aria-label={status === 'recording' ? 'Parar gravação' : 'Iniciar gravação'}

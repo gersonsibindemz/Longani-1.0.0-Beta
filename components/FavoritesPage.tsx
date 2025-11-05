@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getAllTranscriptions, getAllAudioFiles, updateTranscription, updateAudioFile, getAudioRecording } from '../utils/db';
+import { getAllTranscriptions, getAllAudioFiles, updateTranscription, updateAudioFile, getAudioRecording, countUserAudioFiles } from '../utils/db';
 import { Transcription, AudioFile, AudioRecording } from '../types';
 import { Loader } from './Loader';
 import { StarIcon, HistoryIcon, WaveformIcon, PlayIcon, StarOutlineIcon } from './Icons';
+import { useAuth } from '../contexts/AuthContext';
+import { TRIAL_MAX_FILES } from '../utils/audioUtils';
 
 type FavoriteItem = (Transcription & { type: 'transcription' }) | (AudioFile & { type: 'audio' });
 
 export const FavoritesPage: React.FC<{ onTranscribe: (audio: AudioRecording) => void, onPlayAudio: (audio: AudioRecording) => void }> = ({ onTranscribe, onPlayAudio }) => {
+    const { profile } = useAuth();
     const [favorites, setFavorites] = useState<FavoriteItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState<'all' | 'transcription' | 'audio'>('all');
+    const [trialUsageCount, setTrialUsageCount] = useState(0);
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
@@ -28,13 +32,19 @@ export const FavoritesPage: React.FC<{ onTranscribe: (audio: AudioRecording) => 
             allFavorites.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
             
             setFavorites(allFavorites);
+            
+            if (profile?.plan === 'trial') {
+                const count = await countUserAudioFiles(profile.id);
+                setTrialUsageCount(count);
+            }
+
         } catch (err) {
             setError('Não foi possível carregar os favoritos.');
             console.error(err);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [profile]);
 
     useEffect(() => {
         fetchData();
@@ -68,6 +78,8 @@ export const FavoritesPage: React.FC<{ onTranscribe: (audio: AudioRecording) => 
     };
 
     const filteredFavorites = favorites.filter(item => filter === 'all' || item.type === filter);
+    const isTrialPlan = profile?.plan === 'trial';
+    const isTrialUploadsLocked = isTrialPlan && trialUsageCount >= TRIAL_MAX_FILES;
 
     if (isLoading) {
         return <div className="flex-grow flex items-center justify-center"><Loader className="w-8 h-8 text-[#24a9c5]" /></div>;
@@ -117,7 +129,7 @@ export const FavoritesPage: React.FC<{ onTranscribe: (audio: AudioRecording) => 
                                 {item.type === 'transcription' ? (
                                     <button onClick={() => handleAction(item)} className="w-full text-sm font-semibold text-cyan-600 dark:text-cyan-400 hover:underline">Ver Transcrição</button>
                                 ): (
-                                     <button onClick={() => handleAction(item)} className="w-full text-sm font-semibold text-purple-600 dark:text-purple-400 hover:underline">Transcrever</button>
+                                     <button onClick={() => handleAction(item)} disabled={isTrialUploadsLocked} className="w-full text-sm font-semibold text-purple-600 dark:text-purple-400 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed">Transcrever</button>
                                 )}
                             </div>
                         </li>

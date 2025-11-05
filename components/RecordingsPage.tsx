@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { VoiceRecorder } from './VoiceRecorder';
-import { getAllAudioFiles, addAudioFile, deleteAudioFile, updateAudioFile, getAudioRecording } from '../utils/db';
+import { getAllAudioFiles, addAudioFile, deleteAudioFile, updateAudioFile, getAudioRecording, countUserAudioFiles } from '../utils/db';
 import { AudioFile, AudioRecording, RecordingQuality } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { Loader } from './Loader';
@@ -8,7 +8,7 @@ import { DropdownMenu } from './DropdownMenu';
 import { MoreVerticalIcon, EditIcon, StarIcon, StarOutlineIcon, TrashIcon, WaveformIcon, PlayIcon, UploadIcon, CheckIcon } from './Icons';
 import { ConfirmationModal } from './ConfirmationModal';
 import { PropertiesModal } from './PropertiesModal';
-import { formatPlayerTime, getFriendlyErrorMessage } from '../utils/audioUtils';
+import { formatPlayerTime, getFriendlyErrorMessage, TRIAL_MAX_FILES } from '../utils/audioUtils';
 
 const RenameModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (newName: string) => Promise<void>; currentName: string }> = ({ isOpen, onClose, onSave, currentName }) => {
     const [name, setName] = useState(currentName);
@@ -55,6 +55,7 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
     const [recordings, setRecordings] = useState<AudioFile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [trialUsageCount, setTrialUsageCount] = useState(0);
 
     const [itemToDelete, setItemToDelete] = useState<AudioFile | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -64,6 +65,9 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
 
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    
+    const isTrialPlan = profile?.plan === 'trial';
+    const isTrialUploadsLocked = isTrialPlan && trialUsageCount >= TRIAL_MAX_FILES;
 
     const fetchData = useCallback(async () => {
         setIsLoading(true);
@@ -71,13 +75,17 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
         try {
             const data = await getAllAudioFiles();
             setRecordings(data);
+            if (profile?.plan === 'trial') {
+                const count = await countUserAudioFiles(profile.id);
+                setTrialUsageCount(count);
+            }
         } catch (err) {
             setError('Não foi possível carregar as gravações.');
             console.error(err);
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [profile]);
 
     useEffect(() => {
         fetchData();
@@ -85,6 +93,10 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
 
     const handleSaveRecording = async (audioBlob: Blob) => {
         if (!profile) return;
+        if (isTrialUploadsLocked) {
+            setError(`Atingiu o limite de ${TRIAL_MAX_FILES} ficheiros para o plano Trial. Faça um upgrade para continuar.`);
+            return;
+        }
         const fileName = `Gravação-${new Date().toLocaleString('pt-PT').replace(/[\/:]/g, '-')}.mp4`;
         try {
             await addAudioFile({ name: fileName, audioBlob }, profile.id);
@@ -98,6 +110,19 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
     const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
         const files = event.target.files;
         if (!files || files.length === 0 || !profile) return;
+        
+        if (isTrialUploadsLocked) {
+            setError(`Atingiu o limite de ${TRIAL_MAX_FILES} ficheiros para o plano Trial. Faça um upgrade para continuar.`);
+            if (event.target) event.target.value = '';
+            return;
+        }
+
+        const remainingSlots = TRIAL_MAX_FILES - trialUsageCount;
+        if (isTrialPlan && files.length > remainingSlots) {
+            setError(`Só pode carregar mais ${remainingSlots} ficheiro(s). Por favor, selecione menos ficheiros.`);
+            if (event.target) event.target.value = '';
+            return;
+        }
 
         setIsUploading(true);
         setError(null);
@@ -213,7 +238,7 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
                                         <DropdownMenu
                                             trigger={<button className="p-2 text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"><MoreVerticalIcon className="w-5 h-5"/></button>}
                                             options={[
-                                                { label: 'Transcrever', icon: <WaveformIcon className="w-4 h-4" />, onClick: () => performAction(item.id, 'transcribe') },
+                                                { label: 'Transcrever', icon: <WaveformIcon className="w-4 h-4" />, onClick: () => performAction(item.id, 'transcribe'), disabled: isTrialUploadsLocked },
                                                 { label: 'Reproduzir', icon: <PlayIcon className="w-4 h-4" />, onClick: () => performAction(item.id, 'play') },
                                                 { label: 'Renomear', icon: <EditIcon className="w-4 h-4" />, onClick: () => setItemToRename(item) },
                                                 { label: 'Propriedades', icon: <WaveformIcon className="w-4 h-4" />, onClick: () => performAction(item.id, 'properties') },
@@ -239,7 +264,7 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
                 className="hidden"
                 accept="audio/*"
                 multiple
-                disabled={isUploading || uploadDisabled}
+                disabled={isUploading || uploadDisabled || isTrialUploadsLocked}
             />
             <div className="max-w-5xl mx-auto">
                 <div className="flex justify-between items-center mb-6">
@@ -249,22 +274,33 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
                      <div className="text-right">
                         <button
                             onClick={() => fileInputRef.current?.click()}
-                            disabled={isUploading || uploadDisabled}
+                            disabled={isUploading || uploadDisabled || isTrialUploadsLocked}
                             className="flex items-center gap-2 px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-[#24a9c5] hover:bg-[#1e8a9f] disabled:opacity-50"
-                            title={uploadDisabled ? "Disponível nos planos pagos" : "Carregar ficheiros de áudio do dispositivo"}
+                            title={isTrialUploadsLocked ? `Atingiu o limite de ${TRIAL_MAX_FILES} ficheiros para o plano Trial.` : uploadDisabled ? "Disponível nos planos pagos" : "Carregar ficheiros de áudio do dispositivo"}
                         >
                             {isUploading ? <Loader className="w-5 h-5" /> : <UploadIcon className="w-5 h-5" />}
                             <span>Carregar</span>
                         </button>
-                        {uploadDisabled && (
+                        {uploadDisabled && !isTrialPlan && (
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                                 Disponível nos planos pagos
                             </p>
                         )}
                     </div>
                 </div>
+                {isTrialPlan && (
+                    <div className="w-full p-3 mb-4 bg-cyan-50 dark:bg-cyan-900/30 rounded-lg border border-cyan-100 dark:border-cyan-800 text-center animate-fade-in">
+                        <p className="font-semibold text-cyan-800 dark:text-cyan-200">
+                            Plano Trial
+                        </p>
+                        <p className="text-sm text-cyan-700 dark:text-cyan-300 mt-1">
+                            Ficheiros: {trialUsageCount} / {TRIAL_MAX_FILES}
+                            {isTrialUploadsLocked && " - Limite atingido."}
+                        </p>
+                    </div>
+                )}
                 <div className="mb-8">
-                    <VoiceRecorder onSave={handleSaveRecording} preferredQuality={preferredQuality} />
+                    <VoiceRecorder onSave={handleSaveRecording} preferredQuality={preferredQuality} disabled={isTrialUploadsLocked}/>
                 </div>
                 {renderList("Ficheiros Carregados", uploadedFiles)}
                 {renderList("Gravações Salvas", savedRecordings)}

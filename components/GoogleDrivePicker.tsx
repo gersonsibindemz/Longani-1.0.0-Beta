@@ -18,6 +18,7 @@ const SCOPES = 'https://www.googleapis.com/auth/drive.readonly';
 
 interface GoogleDrivePickerProps {
   onFileImported: (file: File) => void;
+  disabled?: boolean;
 }
 
 type PickerStatus = 'loading' | 'ready' | 'error';
@@ -68,7 +69,7 @@ const loadGoogleApiScripts = (): Promise<void> => {
     });
   };
 
-export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onFileImported }) => {
+export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onFileImported, disabled = false }) => {
     const [status, setStatus] = useState<PickerStatus>('loading');
     const [error, setError] = useState<string | null>(null);
     const tokenClientRef = useRef<any>(null);
@@ -164,6 +165,7 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onFileImpo
     }
 
     const handleImportClick = () => {
+        if (disabled) return;
         if (tokenClientRef.current) {
             tokenClientRef.current.requestAccessToken({ prompt: '' });
         } else {
@@ -175,7 +177,7 @@ export const GoogleDrivePicker: React.FC<GoogleDrivePickerProps> = ({ onFileImpo
         <button
             type="button"
             onClick={handleImportClick}
-            disabled={status !== 'ready'}
+            disabled={status !== 'ready' || disabled}
             className="w-full sm:w-auto flex items-center justify-center gap-3 bg-white text-gray-700 font-medium py-2 px-4 rounded-lg border border-gray-300 hover:bg-gray-100 disabled:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-400 transition-colors duration-300 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-600 dark:disabled:bg-gray-800 dark:disabled:text-gray-500"
         >
             {status !== 'ready' ? (

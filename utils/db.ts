@@ -71,6 +71,15 @@ export const deleteTranscription = async (id: string): Promise<void> => {
 
 // --- Audio File Functions ---
 
+export const countUserAudioFiles = async (userId: string): Promise<number> => {
+    const { count, error } = await supabase
+        .from('audio_files')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', userId);
+    if (error) throw error;
+    return count || 0;
+};
+
 // ADVICE: The 'audio_files' table and the 'audio_files' storage bucket currently have permissive RLS policies
 // allowing public access. This is a security risk. It's highly recommended to restrict access so users can only
 // manage their own audio files.

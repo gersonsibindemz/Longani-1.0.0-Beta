@@ -1,5 +1,9 @@
 import { Plan, Profile, AudioFile } from "../types";
 
+export const TRIAL_MAX_FILES = 5;
+export const TRIAL_MAX_FILE_SIZE_MB = 25;
+export const TRIAL_MAX_DURATION_SECONDS = 300; // 5 minutes
+
 export const getAudioDuration = (file: File): Promise<number> => {
   return new Promise((resolve, reject) => {
     if (!file || !file.type.startsWith('audio/')) {

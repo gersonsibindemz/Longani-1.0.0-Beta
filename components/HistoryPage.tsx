@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { getAllTranscriptions, updateTranscription, deleteTranscription, addTranslation, updateProfileTeamId, getUserTeam } from '../utils/db';
+import { getAllTranscriptions, updateTranscription, deleteTranscription, addTranslation, updateProfileTeamId, getUserTeam, countUserAudioFiles } from '../utils/db';
 import { Transcription, TeamWithMembers } from '../types';
 import { Loader } from './Loader';
 import { DropdownMenu } from './DropdownMenu';
@@ -8,6 +8,7 @@ import { ConfirmationModal } from './ConfirmationModal';
 import { PropertiesModal } from './PropertiesModal';
 import { translateText } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
+import { TRIAL_MAX_FILES } from '../utils/audioUtils';
 
 const RenameModal: React.FC<{ isOpen: boolean; onClose: () => void; onSave: (newName: string) => Promise<void>; currentName: string }> = ({ isOpen, onClose, onSave, currentName }) => {
     const [name, setName] = useState(currentName);
@@ -54,6 +55,7 @@ export const HistoryPage: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [team, setTeam] = useState<TeamWithMembers | null>(null);
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+    const [trialUsageCount, setTrialUsageCount] = useState(0);
 
     const [itemToDelete, setItemToDelete] = useState<Transcription | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
@@ -71,6 +73,10 @@ export const HistoryPage: React.FC = () => {
             if (profile) {
                 const userTeam = await getUserTeam(profile.id);
                 setTeam(userTeam);
+                if (profile.plan === 'trial') {
+                    const count = await countUserAudioFiles(profile.id);
+                    setTrialUsageCount(count);
+                }
             }
         } catch (err) {
             setError('Não foi possível carregar as transcrições.');
@@ -242,6 +248,9 @@ export const HistoryPage: React.FC = () => {
         sessionStorage.removeItem('highlightTranscriptionId');
     }
 
+    const isTrialPlan = profile?.plan === 'trial';
+    const isTrialUploadsLocked = isTrialPlan && trialUsageCount >= TRIAL_MAX_FILES;
+
     const renderTranscriptionList = (data: Transcription[]) => {
         const allFolderNames = folders.map(f => f.name);
 
@@ -276,7 +285,7 @@ export const HistoryPage: React.FC = () => {
                                 { label: 'Ver Detalhes', icon: <HistoryIcon className="w-4 h-4" />, onClick: () => handleViewDetails(item.id) },
                                 { label: 'Renomear', icon: <EditIcon className="w-4 h-4" />, onClick: () => setItemToRename(item) },
                                 { label: 'Mover para...', icon: <FolderIcon className="w-4 h-4" />, submenu: moveSubmenu },
-                                { label: 'Traduzir (Inglês)', icon: <TranslateIcon className="w-4 h-4" />, onClick: () => handleTranslate(item), disabled: !item.cleaned_transcript },
+                                { label: 'Traduzir (Inglês)', icon: <TranslateIcon className="w-4 h-4" />, onClick: () => handleTranslate(item), disabled: !item.cleaned_transcript || isTrialUploadsLocked },
                                 team ? (item.team_id ? 
                                     { label: 'Remover da Equipa', icon: <UsersIcon className="w-4 h-4" />, onClick: () => handleRemoveFromTeam(item) } :
                                     { label: 'Partilhar com Equipa', icon: <UsersIcon className="w-4 h-4" />, onClick: () => handleShareWithTeam(item) }
