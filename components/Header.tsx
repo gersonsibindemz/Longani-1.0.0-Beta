@@ -175,17 +175,6 @@ export const Header: React.FC<HeaderProps> = React.memo((props) => {
                     </a>
                   </li>
                 )}
-                 <li>
-                  <a
-                    href="#/plans"
-                    onClick={handleNavClick}
-                    className={`font-medium hover:text-[#24a9c5] transition-colors ${
-                      page === 'plans' ? 'text-[#24a9c5]' : 'text-gray-600 dark:text-gray-300'
-                    }`}
-                  >
-                    Planos
-                  </a>
-                </li>
                 {(currentUser?.plan === 'ideal' || currentUser?.plan === 'premium') && (
                   <li>
                     <a
@@ -272,10 +261,8 @@ export const Header: React.FC<HeaderProps> = React.memo((props) => {
                     {currentUser ? (
                       <>
                         <a href="#/profile" onClick={handleNavClick} className="font-semibold text-gray-800 dark:text-gray-200 hover:underline">{currentUser.name}</a>
-                        <a
-                            href="#/plans"
-                            onClick={handleNavClick}
-                            className="flex items-center mt-1 text-xs text-gray-500 dark:text-gray-400 hover:text-[#24a9c5] dark:hover:text-[#24a9c5] transition-colors"
+                        <div
+                            className="flex items-center mt-1 text-xs text-gray-500 dark:text-gray-400"
                         >
                             <CreditCardIcon className="w-4 h-4 mr-1.5" />
                             <span>Plano </span>
@@ -285,7 +272,7 @@ export const Header: React.FC<HeaderProps> = React.memo((props) => {
                                     Trial
                                 </span>
                             )}
-                        </a>
+                        </div>
                       </>
                     ) : (
                       <a href="#/login" onClick={handleNavClick} className="font-semibold text-gray-800 dark:text-gray-200 hover:underline">

@@ -2,6 +2,8 @@
 
 
 
+
+
 import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { transcribeAudio, cleanTranscript, translateText, refineTranscript, detectLanguage } from './services/geminiService';
 import { Header, longaniLogoUrl } from './components/Header';
@@ -217,9 +219,6 @@ const FeatureLockedPage: React.FC<{featureName: string, requiredPlan: string}> =
             <p className="mt-2 max-w-prose mx-auto text-gray-600 dark:text-gray-400">
                 Esta funcionalidade está disponível apenas para utilizadores com o plano <span className="font-semibold">{requiredPlan}</span>.
             </p>
-            <a href="#/plans" className="inline-block mt-6 px-6 py-2.5 text-sm font-bold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
-                Ver Planos e Fazer Upgrade
-            </a>
         </div>
     </main>
 );
@@ -737,18 +736,13 @@ const App: React.FC = () => {
       setError('Por favor, selecione um ficheiro de áudio e inicie a sessão para processar.');
       return;
     }
-
-    const navigateToPlans = (e: React.MouseEvent<HTMLAnchorElement>) => {
-        e.preventDefault();
-        window.location.hash = '#/plans';
-    };
     
     if (isFeatureLocked) {
         let lockMessage;
         if (isTrialExpiredLocked) {
-            lockMessage = <>O seu período de teste terminou. Por favor, <a href="#/plans" onClick={navigateToPlans} className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para continuar a transcrever.</>;
+            lockMessage = <>O seu período de teste terminou. Para continuar a transcrever, é necessário fazer um upgrade.</>;
         } else { // Must be usage locked
-            lockMessage = <>O seu limite de utilização mensal foi atingido. Por favor, <a href="#/plans" onClick={navigateToPlans} className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para obter mais tempo ou aguarde pelo próximo ciclo.</>;
+            lockMessage = <>O seu limite de utilização mensal foi atingido. Para obter mais tempo de transcrição, faça um upgrade ou aguarde pelo próximo ciclo.</>;
         }
         setError(lockMessage);
         return;
@@ -936,11 +930,6 @@ const App: React.FC = () => {
     const shouldShowTrialExpiredBanner = isTrialExpiredLocked;
     const shouldShowMonthlyLimitBanner = isUsageLocked && !isTrialExpiredLocked;
 
-    const navigateToPlans = (e: React.MouseEvent<HTMLAnchorElement>) => {
-        e.preventDefault();
-        window.location.hash = '#/plans';
-    };
-
     const urlParts = page.split('/');
 
     switch (urlParts[0]) {
@@ -966,8 +955,6 @@ const App: React.FC = () => {
             return <FeatureLockedPage featureName="Traduções" requiredPlan="Básico ou superior" />;
         }
         return <TranslationsPage />;
-      case 'plans':
-        return <PlansPage />;
       case 'transcription':
           if (urlParts[1]) {
               return <TranscriptionDetailPage transcriptionId={urlParts[1]} onEdit={loadTranscriptionForEditing} />;
@@ -1012,9 +999,6 @@ const App: React.FC = () => {
                     <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
                         {trialDaysRemaining > 1 ? `O seu período de teste termina em ${trialDaysRemaining} dias.` : 'O seu período de teste termina hoje!'} Considere fazer um upgrade para manter o acesso.
                     </p>
-                    <a href="#/plans" onClick={navigateToPlans} className="inline-block mt-3 px-4 py-1.5 text-sm font-bold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
-                        Ver Planos
-                    </a>
                 </div>
             )}
             {shouldShowTrialExpiredBanner && (
@@ -1025,9 +1009,6 @@ const App: React.FC = () => {
                     <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
                         Para continuar a transcrever e usar todas as funcionalidades, por favor, escolha um plano.
                     </p>
-                    <a href="#/plans" onClick={navigateToPlans} className="inline-block mt-3 px-4 py-1.5 text-sm font-bold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
-                        Ver Planos
-                    </a>
                 </div>
             )}
             {shouldShowMonthlyLimitBanner && (
@@ -1038,9 +1019,6 @@ const App: React.FC = () => {
                     <p className="text-sm text-red-700 dark:text-red-300 mt-1">
                         Utilizou todo o tempo de transcrição do seu plano para este mês. O seu limite será reiniciado no próximo ciclo.
                     </p>
-                    <a href="#/plans" onClick={navigateToPlans} className="inline-block mt-3 px-4 py-1.5 text-sm font-bold text-white bg-[#24a9c5] rounded-full hover:bg-[#1e8a9f] transition-colors">
-                        Ver Planos e Fazer Upgrade
-                    </a>
                 </div>
             )}
             {!audioFile && (
@@ -1318,9 +1296,9 @@ const App: React.FC = () => {
                             if (isFeatureLocked) {
                                 let lockMessage;
                                 if (isTrialExpiredLocked) {
-                                    lockMessage = <>O seu período de teste terminou. Por favor, <a href="#/plans" onClick={navigateToPlans} className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para aceder a esta funcionalidade.</>;
+                                    lockMessage = <>O seu período de teste terminou. Para aceder a esta funcionalidade, é necessário fazer um upgrade.</>;
                                 } else {
-                                    lockMessage = <>O seu limite de utilização mensal foi atingido. Por favor, <a href="#/plans" onClick={navigateToPlans} className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">faça um upgrade</a> para continuar a usar as funcionalidades.</>;
+                                    lockMessage = <>O seu limite de utilização mensal foi atingido. Para continuar a usar as funcionalidades, é necessário fazer um upgrade.</>;
                                 }
                                 setError(lockMessage);
                                 window.scrollTo(0, 0);
@@ -1332,7 +1310,7 @@ const App: React.FC = () => {
                             if (!canAccessPremium) {
                                 setError(
                                     <>
-                                        O Refinamento Avançado é uma funcionalidade exclusiva do plano Premium. <a href="#/plans" onClick={navigateToPlans} className="font-semibold underline hover:text-cyan-800 dark:hover:text-cyan-200">Faça um upgrade</a> para aceder.
+                                        O Refinamento Avançado é uma funcionalidade exclusiva do plano Premium.
                                     </>
                                 );
                                 window.scrollTo(0, 0);
