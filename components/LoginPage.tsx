@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Loader } from './Loader';
 import { longaniLogoUrl } from './Header';
 import { useAuth } from '../contexts/AuthContext';
-import { PasswordRecoveryModal } from './PasswordRecoveryModal';
 import { EyeIcon, EyeOffIcon } from './Icons';
 
 export const LoginPage: React.FC = () => {
@@ -12,7 +11,6 @@ export const LoginPage: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [isRecoveryModalOpen, setIsRecoveryModalOpen] = useState(false);
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
 
   useEffect(() => {
@@ -20,6 +18,22 @@ export const LoginPage: React.FC = () => {
     if (message) {
       setSuccessMessage(message);
       sessionStorage.removeItem('signup_success');
+    }
+
+    // Auto-fill credentials from sign-up
+    const credentials = localStorage.getItem('signup_credentials');
+    if (credentials) {
+      try {
+        const { email: storedEmail, password: storedPassword } = JSON.parse(credentials);
+        if (storedEmail && storedPassword) {
+            setEmail(storedEmail);
+            setPassword(storedPassword);
+        }
+      } catch (e) {
+          console.error('Failed to parse credentials from local storage', e);
+      } finally {
+          localStorage.removeItem('signup_credentials');
+      }
     }
   }, []);
 
@@ -104,7 +118,7 @@ export const LoginPage: React.FC = () => {
                   </div>
                 </div>
               </div>
-               <div className="flex items-center justify-between mt-4">
+               <div className="flex items-center mt-4">
                     <div className="flex items-center">
                         <input
                             id="remember-me"
@@ -115,15 +129,6 @@ export const LoginPage: React.FC = () => {
                         <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900 dark:text-gray-300">
                             Lembrar-me
                         </label>
-                    </div>
-                    <div className="text-sm">
-                        <button
-                            type="button"
-                            onClick={() => setIsRecoveryModalOpen(true)}
-                            className="font-medium text-[#24a9c5] hover:underline"
-                        >
-                            Esqueceu a sua palavra-passe?
-                        </button>
                     </div>
                 </div>
               {error && <p className="mt-4 text-center text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -143,10 +148,6 @@ export const LoginPage: React.FC = () => {
           </div>
         </div>
       </main>
-      <PasswordRecoveryModal 
-        isOpen={isRecoveryModalOpen}
-        onClose={() => setIsRecoveryModalOpen(false)}
-      />
     </>
   );
 };

@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { EyeIcon, EyeOffIcon } from './Icons';
 
 export const SignUpPage: React.FC = () => {
-  const { signUp } = useAuth();
+  const { signUp, signOut } = useAuth();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,6 +19,12 @@ export const SignUpPage: React.FC = () => {
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError('Por favor, insira um endereço de email válido.');
+      return;
+    }
 
     if (password !== confirmPassword) {
       setError('As palavras-passe não coincidem.');
@@ -60,6 +66,11 @@ export const SignUpPage: React.FC = () => {
         }
         setIsLoading(false);
     } else {
+        // Sign out immediately to clear the session created by signUp and prevent auto-login
+        await signOut();
+        
+        sessionStorage.setItem('signup_success', 'Conta criada com sucesso! Por favor, inicie a sessão.');
+        localStorage.setItem('signup_credentials', JSON.stringify({ email, password }));
         window.location.hash = '#/login';
     }
   };
