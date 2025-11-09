@@ -48,9 +48,10 @@ interface RecordingsPageProps {
     onPlayAudio: (audio: AudioRecording) => void;
     uploadDisabled?: boolean;
     preferredQuality: RecordingQuality;
+    onStartRecording: () => void;
 }
 
-export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, onPlayAudio, uploadDisabled, preferredQuality }) => {
+export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, onPlayAudio, uploadDisabled, preferredQuality, onStartRecording }) => {
     const { profile } = useAuth();
     const [recordings, setRecordings] = useState<AudioFile[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -300,7 +301,7 @@ export const RecordingsPage: React.FC<RecordingsPageProps> = ({ onTranscribe, on
                     </div>
                 )}
                 <div className="mb-8">
-                    <VoiceRecorder onSave={handleSaveRecording} preferredQuality={preferredQuality} disabled={isTrialUploadsLocked}/>
+                    <VoiceRecorder onSave={handleSaveRecording} preferredQuality={preferredQuality} disabled={isTrialUploadsLocked} onStartRecording={onStartRecording}/>
                 </div>
                 {renderList("Ficheiros Carregados", uploadedFiles)}
                 {renderList("Gravações Salvas", savedRecordings)}

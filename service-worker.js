@@ -1,6 +1,6 @@
 // service-worker.js
 
-const CACHE_NAME = 'longani-cache-v17'; // Updated cache name for new components
+const CACHE_NAME = 'longani-cache-v18'; // Incremented cache version
 const urlsToCache = [
   '/',
   '/index.html',
@@ -37,8 +37,6 @@ self.addEventListener('install', (event) => {
     caches.open(CACHE_NAME)
       .then((cache) => {
         console.log('Service Worker: Caching app shell');
-        // Use `cache.addAll()` which is atomic. If one file fails, the whole operation fails.
-        // Also, add a `.catch()` to log potential caching errors during installation.
         return cache.addAll(urlsToCache).catch(error => {
           console.error('Service Worker: Failed to cache one or more files during install:', error);
         });
@@ -46,7 +44,7 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Activate event: clean up old caches.
+// Activate event: clean up old caches and take control of clients.
 self.addEventListener('activate', (event) => {
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
@@ -59,9 +57,17 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
 });
+
+// Message event: listen for a message from the client to skip waiting.
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
+});
+
 
 // Fetch event: Implements a robust strategy for both navigation and asset requests.
 self.addEventListener('fetch', (event) => {
@@ -70,39 +76,25 @@ self.addEventListener('fetch', (event) => {
       return;
   }
 
-  // For navigation requests, serve the main HTML file from the cache.
-  // This is a "cache-first" strategy for the app shell, making it load fast and work offline.
-  // It also prevents 404 errors for non-existent paths by always serving the main page.
+  // For navigation requests (e.g., loading the app), use a "Network-first" strategy.
+  // This ensures the user always gets the latest HTML shell when they are online,
+  // preventing the app from breaking after a deployment. The cache is a fallback for offline use.
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      caches.match('/index.html').then((response) => {
-        // Return the cached index.html, or fetch from network if it's not in the cache for some reason.
-        return response || fetch(event.request);
+      fetch(event.request).catch(() => {
+        // If the network fails, serve the cached index.html.
+        return caches.match('/index.html');
       })
     );
     return;
   }
 
-  // For all other requests (assets like scripts, styles), use a "stale-while-revalidate" strategy.
+  // For all other requests (assets like scripts, styles), use a "Cache-first" strategy.
+  // These assets are versioned by the cache name, so this is fast and reliable.
+  // If an asset isn't in the cache, it will be fetched from the network.
   event.respondWith(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.match(event.request).then((cachedResponse) => {
-        const fetchPromise = fetch(event.request).then((networkResponse) => {
-          // If the fetch is successful, update the cache with the new response.
-          // We only cache successful responses to avoid caching errors.
-          if (networkResponse && networkResponse.status === 200) {
-            cache.put(event.request, networkResponse.clone());
-          }
-          return networkResponse;
-        }).catch(err => {
-            console.error('Service Worker: Network fetch failed for asset:', event.request.url, err);
-            // This catch is for network errors. The browser will handle the failed asset request
-            // if there was no cached response.
-        });
-
-        // Return the cached response immediately if available, otherwise wait for the network response.
-        return cachedResponse || fetchPromise;
-      });
+    caches.match(event.request).then((response) => {
+      return response || fetch(event.request);
     })
   );
 });

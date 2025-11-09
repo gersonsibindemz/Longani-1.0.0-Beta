@@ -9,6 +9,7 @@ interface VoiceRecorderProps {
   onSave: (audioBlob: Blob) => void;
   preferredQuality: RecordingQuality;
   disabled?: boolean;
+  onStartRecording: () => void;
 }
 
 type RecordingStatus = 'idle' | 'permission' | 'recording' | 'stopped';
@@ -18,7 +19,7 @@ const qualityProfiles: { [key in RecordingQuality]: { label: string, audioBitsPe
   high: { label: 'Alta Qualidade (256kbps)', audioBitsPerSecond: 256000 }
 };
 
-export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSave, preferredQuality, disabled = false }) => {
+export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSave, preferredQuality, disabled = false, onStartRecording }) => {
   const [status, setStatus] = useState<RecordingStatus>('idle');
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -58,6 +59,7 @@ export const VoiceRecorder: React.FC<VoiceRecorderProps> = ({ onSave, preferredQ
   }
 
   const startRecording = async () => {
+    onStartRecording();
     resetState();
     setStatus('permission');
     setError(null);

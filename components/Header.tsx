@@ -1,29 +1,65 @@
 import React, { useState, useEffect } from 'react';
 import { MenuIcon, CloseIcon, UserIcon, SunIcon, MoonIcon, UsersIcon, SearchIcon, CreditCardIcon } from './Icons';
 import type { Profile, Theme, PreferredLanguage, RecordingQuality } from '../types';
-import { isTrialActive, getTrialDaysRemaining, getPlanLimits, TRIAL_PERIOD_DAYS } from '../utils/audioUtils';
+import { isTrialActive, getTrialDaysRemaining, TRIAL_PERIOD_DAYS } from '../utils/audioUtils';
+import { useAuth } from '../contexts/AuthContext';
+import { useUserStatus } from '../hooks/useUserStatus';
 
 // The logo is loaded from an external URL.
 export const longaniLogoUrl = "https://i.postimg.cc/FsF4dhc0/Longani-Logo.png";
 
 interface HeaderProps {
   page: string;
-  theme: Theme;
-  setTheme: (theme: Theme) => void;
   preferredLanguage: PreferredLanguage;
-  setPreferredLanguage: (lang: PreferredLanguage) => void;
-  preferredRecordingQuality: RecordingQuality;
-  setRecordingQuality: (quality: RecordingQuality) => void;
-  currentUser: Profile | null;
-  onLogout: () => void;
   onSearchClick: () => void;
   onHomeReset: () => void;
-  monthlyUsage: number;
 }
 
 export const Header: React.FC<HeaderProps> = React.memo((props) => {
-  const { page, theme, setTheme, preferredLanguage, setPreferredLanguage, preferredRecordingQuality, setRecordingQuality, currentUser, onLogout, onSearchClick, onHomeReset, monthlyUsage } = props;
+  const { page, preferredLanguage, onSearchClick, onHomeReset } = props;
+  const { profile: currentUser, signOut, updateProfilePreferences } = useAuth();
+  const { 
+    monthlyUsage, 
+    usagePercentage, 
+    usageLimitMinutes, 
+    trialUsageCount, 
+    TRIAL_MAX_FILES,
+    TRIAL_MAX_FILE_SIZE_MB,
+    TRIAL_MAX_DURATION_SECONDS 
+  } = useUserStatus();
+  
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  // Derive preferences from profile, with defaults.
+  const theme = (currentUser?.preferences as any)?.theme || 'dark';
+  const preferredRecordingQuality = (currentUser?.preferences as any)?.recordingQuality || 'standard';
+
+  const setTheme = (newTheme: Theme) => {
+    updateProfilePreferences({ theme: newTheme });
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  };
+
+  const setPreferredLanguage = (lang: PreferredLanguage) => {
+    updateProfilePreferences({ language: lang });
+  };
+  
+  const setRecordingQuality = (quality: RecordingQuality) => {
+    updateProfilePreferences({ recordingQuality: quality });
+  };
+  
+  useEffect(() => {
+    // Apply theme on initial load
+    if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+    } else {
+        document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
+
 
   // Effect to lock body scroll when the mobile menu is open.
   useEffect(() => {
@@ -58,7 +94,7 @@ export const Header: React.FC<HeaderProps> = React.memo((props) => {
   }
   
   const handleLogoutAndCloseMenu = () => {
-    onLogout();
+    signOut();
     setIsMenuOpen(false);
   };
 
@@ -66,13 +102,17 @@ export const Header: React.FC<HeaderProps> = React.memo((props) => {
   const trialIsActive = isTrialActive(currentUser?.created_at);
   const trialDaysRemaining = getTrialDaysRemaining(currentUser?.created_at);
   const trialProgressPercentage = isTrialPlan && trialIsActive ? (trialDaysRemaining / TRIAL_PERIOD_DAYS) * 100 : 0;
+  const filesUsedPercentage = (trialUsageCount / TRIAL_MAX_FILES) * 100;
 
-  const planLimits = getPlanLimits();
-  const currentPlanLimit = currentUser ? planLimits[currentUser.plan || 'basico'] : 0;
-  const usagePercentage = currentPlanLimit !== Infinity && currentPlanLimit > 0 ? (monthlyUsage / currentPlanLimit) * 100 : 0;
   const usageMinutes = Math.floor(monthlyUsage / 60);
-  const limitHours = currentPlanLimit !== Infinity ? Math.round(currentPlanLimit / 3600) : 'Ilimitado';
-  const limitInMinutes = typeof limitHours === 'number' ? limitHours * 60 : null;
+  
+  // Dynamic color for the trial progress bar
+  const getTrialBarColor = () => {
+    if (trialDaysRemaining >= 5) return 'bg-cyan-500'; // Safe
+    if (trialDaysRemaining >= 3) return 'bg-yellow-400'; // Warning
+    return 'bg-red-500'; // Alert
+  };
+  const trialBarColor = getTrialBarColor();
 
   return (
     <>
@@ -113,7 +153,7 @@ export const Header: React.FC<HeaderProps> = React.memo((props) => {
           </div>
           
           {/* Right side: Desktop Menu and Search */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
             <nav className="hidden xl:block">
               <ul className="flex items-center gap-6">
                 <li>
@@ -202,7 +242,7 @@ export const Header: React.FC<HeaderProps> = React.memo((props) => {
                       </a>
                     </li>
                     <li>
-                      <button onClick={onLogout} className="font-medium text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] transition-colors">
+                      <button onClick={signOut} className="font-medium text-gray-600 dark:text-gray-300 hover:text-[#24a9c5] transition-colors">
                         Sair
                       </button>
                     </li>
@@ -266,11 +306,14 @@ export const Header: React.FC<HeaderProps> = React.memo((props) => {
                         >
                             <CreditCardIcon className="w-4 h-4 mr-1.5" />
                             <span>Plano </span>
-                            <span className="capitalize font-semibold ml-1">{currentUser.plan || 'basico'}</span>
-                            {isTrialActive(currentUser.created_at) && (
+                            {isTrialPlan && !trialIsActive ? (
+                                <span className="capitalize font-semibold ml-1">Trial Expirado</span>
+                             ) : isTrialPlan ? (
                                 <span className="ml-2 text-xs font-semibold bg-yellow-200 text-yellow-800 px-2 py-0.5 rounded-full dark:bg-yellow-900 dark:text-yellow-200">
                                     Trial
                                 </span>
+                            ) : (
+                                <span className="capitalize font-semibold ml-1">{currentUser.plan || 'basico'}</span>
                             )}
                         </div>
                       </>
@@ -285,44 +328,69 @@ export const Header: React.FC<HeaderProps> = React.memo((props) => {
              {/* Usage and Trial Status */}
             {currentUser && <div className="px-4 py-2 space-y-4 mb-2">
                 {isTrialPlan && trialIsActive && (
-                    <div>
-                        <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400 mb-1">
-                            <span>Teste Gratuito</span>
-                            <span className="font-semibold">{trialDaysRemaining} dia(s) restante(s)</span>
+                    <>
+                        <div>
+                            <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400 mb-1">
+                                <span>Teste Gratuito</span>
+                                <span className="font-semibold">{trialDaysRemaining} dia(s) restante(s)</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
+                                <div
+                                    className={`${trialBarColor} h-1.5 rounded-full transition-all duration-500`}
+                                    style={{ width: `${trialProgressPercentage}%` }}
+                                    role="progressbar"
+                                    aria-valuenow={trialDaysRemaining}
+                                    aria-valuemin={0}
+                                    aria-valuemax={TRIAL_PERIOD_DAYS}
+                                ></div>
+                            </div>
                         </div>
-                        <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
-                            <div
-                                className="bg-yellow-400 h-1.5 rounded-full transition-all duration-500"
-                                style={{ width: `${trialProgressPercentage}%` }}
-                                role="progressbar"
-                                aria-valuenow={trialDaysRemaining}
-                                aria-valuemin={0}
-                                aria-valuemax={TRIAL_PERIOD_DAYS}
-                                aria-label={`${trialDaysRemaining} dias de teste restantes`}
-                            ></div>
+                        <div>
+                            <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400 mb-1">
+                                <span>Ficheiros Usados</span>
+                                <span className="font-semibold">{trialUsageCount} / {TRIAL_MAX_FILES}</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
+                                <div
+                                    className="bg-cyan-500 h-1.5 rounded-full transition-all duration-500"
+                                    style={{ width: `${filesUsedPercentage}%` }}
+                                    role="progressbar"
+                                    aria-valuenow={trialUsageCount}
+                                    aria-valuemin={0}
+                                    aria-valuemax={TRIAL_MAX_FILES}
+                                ></div>
+                            </div>
                         </div>
-                    </div>
+                        <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400">
+                            <span>Tamanho Máx. Ficheiro</span>
+                            <span className="font-semibold">{TRIAL_MAX_FILE_SIZE_MB} MB</span>
+                        </div>
+                        <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400">
+                            <span>Duração Máx. Áudio</span>
+                            <span className="font-semibold">{TRIAL_MAX_DURATION_SECONDS / 60} min</span>
+                        </div>
+                    </>
                 )}
                 {currentUser?.plan !== 'trial' && (
                     <div>
                         <div className="flex justify-between items-center text-xs text-gray-600 dark:text-gray-400 mb-1">
                             <span>Uso Mensal</span>
                             <span className="font-semibold">
-                                {limitInMinutes === null
+                                {usageLimitMinutes === null
                                     ? `${usageMinutes} min. usados`
-                                    : `${usageMinutes} / ${limitInMinutes} min`
+                                    : `${usageMinutes} / ${usageLimitMinutes} min`
                                 }
                             </span>
                         </div>
                         <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700">
                             <div
                                 className="bg-cyan-500 h-1.5 rounded-full transition-all duration-500"
-                                style={{ width: `${currentPlanLimit === Infinity ? 100 : Math.min(100, usagePercentage)}%` }}
+                                style={{ width: `${usageLimitMinutes === null ? 100 : Math.min(100, usagePercentage)}%` }}
                                 role="progressbar"
                                 aria-valuenow={usageMinutes}
                                 aria-valuemin={0}
-                                aria-valuemax={limitInMinutes === null ? usageMinutes : limitInMinutes}
-                                aria-label={`Uso mensal: ${usageMinutes} de ${limitInMinutes === null ? 'ilimitados' : limitInMinutes} minutos`}
+                                aria-valuemax={usageLimitMinutes === null ? usageMinutes : usageLimitMinutes}
+                                aria-label={`Uso mensal: ${usageMinutes} de ${usageLimitMinutes === null ? 'ilimitados' : usageLimitMinutes} minutos`}
                             ></div>
                         </div>
                     </div>

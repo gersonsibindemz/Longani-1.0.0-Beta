@@ -1,68 +1,29 @@
-import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { transcribeAudio, cleanTranscript, translateText, refineTranscript, detectLanguage } from './services/geminiService';
+import React, { useState, useCallback, useEffect, useMemo, useRef, useReducer } from 'react';
 import { Header, longaniLogoUrl } from './components/Header';
-import { FileUpload } from './components/FileUpload';
-import { TranscriptDisplay } from './components/TranscriptDisplay';
-import { ProgressBar } from './components/ProgressBar';
-import { Loader } from './components/Loader';
-import { ArrowRightIcon, ReloadIcon, ClockIcon, TargetIcon, InfoIcon, HistoryIcon, ColumnsIcon, SparkleIcon, CloseIcon, SearchIcon, WaveformIcon, TranslateIcon, UsersIcon, SaveIcon, CheckIcon } from './components/Icons';
-import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential, calculateDynamicPrecision, getFriendlyErrorMessage, formatProcessingTime, translateLanguageName, isTrialActive, getTrialDaysRemaining, calculateMonthlyUsage, getCurrentUsagePeriod, getPlanLimits, TRIAL_MAX_FILES, TRIAL_MAX_FILE_SIZE_MB, TRIAL_MAX_DURATION_SECONDS } from './utils/audioUtils';
 import { HistoryPage } from './components/HistoryPage';
 import { RecordingsPage } from './components/RecordingsPage';
-import { addTranscription, addAudioFile, getAllTranscriptions, getTranscriptionById, getAudioRecording, updateTranscription, deleteTranscription, getAudioFilesSince, getTranscriptionByAudioId, countUserAudioFiles } from './utils/db';
 import { NowPlayingBar } from './components/NowPlayingBar';
 import { FavoritesPage } from './components/FavoritesPage';
 import { TranslationsPage } from './components/TranslationsPage';
-import { CustomAudioPlayer } from './components/CustomAudioPlayer';
 import { LoginPage } from './components/LoginPage';
-import { RefineModal } from './components/RefineModal';
-import type { RefineContentType, RefineOutputFormat } from './services/geminiService';
 import { SignUpPage } from './components/SignUpPage';
 import { ProfilePage } from './components/ProfilePage';
 import { TeamsPage } from './components/TeamsPage';
 import DesktopNotice from './components/DesktopNotice';
 import { PlansPage } from './components/PlansPage';
 import { useAuth } from './contexts/AuthContext';
-import { GoogleDrivePicker } from './components/GoogleDrivePicker';
-import type { Theme, PreferredLanguage, AudioRecording, AudioFile, Transcription, RecordingQuality } from './types';
+import type { Theme, PreferredLanguage, AudioRecording, Transcription, RecordingQuality, TranscriptionState, TranscriptionAction, ProcessStage, ExpandedTranscript, OutputPreference } from './types';
 import { TranscriptionDetailPage } from './components/TranscriptionDetailPage';
 import { ProcessingLogOverlay } from './components/ProcessingLogOverlay';
-
-
-type ProcessStage = 'idle' | 'transcribing' | 'cleaning' | 'completed';
-type ExpandedTranscript = 'raw' | 'cleaned' | 'none';
-type OutputPreference = 'both' | 'raw' | 'cleaned';
-
-const languageMap: { [key in PreferredLanguage]: string } = {
-  pt: 'Português',
-  en: 'English',
-};
-
-const contentLabels: { [key in RefineContentType]: string } = {
-    'meeting': 'Reunião',
-    'sermon': 'Sermão',
-    'interview': 'Entrevista',
-    'lecture': 'Palestra',
-    'note': 'Nota Pessoal',
-};
-
-const formatLabels: { [key in RefineOutputFormat]: string } = {
-    'meeting-report': 'Relatório de Reunião',
-    'report': 'Relatório Detalhado',
-    'article': 'Artigo Envolvente',
-    'key-points': 'Resumo de Pontos-Chave',
-    'action-items': 'Lista de Ações',
-};
-
-const getRefinedTitle = (contentType?: string, outputFormat?: string): string => {
-    if (!contentType || !outputFormat) {
-        return 'Documento Refinado';
-    }
-    const contentLabel = contentLabels[contentType as RefineContentType] || 'Conteúdo';
-    const formatLabel = formatLabels[outputFormat as RefineOutputFormat] || 'Documento';
-
-    return `${formatLabel} (${contentLabel})`;
-};
+import { Loader } from './components/Loader';
+import { CloseIcon, HistoryIcon, ReloadIcon, SearchIcon, UsersIcon } from './components/Icons';
+import { TranscriptionWorkspace } from './components/TranscriptionWorkspace';
+import { getAllTranscriptions, getTranscriptionById, getAudioRecording, getTranscriptionByAudioId } from './utils/db';
+import { useUserStatus } from './hooks/useUserStatus';
+// Fix: Import missing functions: getAudioDuration, estimateProcessingTime, estimatePrecisionPotential
+import { getAudioDuration, estimateProcessingTime, estimatePrecisionPotential } from './utils/audioUtils';
+// Fix: Import missing function: detectLanguage
+import { detectLanguage } from './services/geminiService';
 
 const getCurrentPage = () => window.location.hash.replace(/^#\/?/, '') || 'home';
 
@@ -217,89 +178,164 @@ const FeatureLockedPage: React.FC<{featureName: string, requiredPlan: string}> =
     </main>
 );
 
-const uploadAndLinkAudio = async (transcriptionId: string, audioFile: File, userId: string) => {
-    try {
-      const savedAudioFile = await addAudioFile({
-        name: audioFile.name,
-        audioBlob: audioFile,
-      }, userId);
-  
-      await updateTranscription(transcriptionId, {
-        audio_id: savedAudioFile.id,
-      });
-    } catch (err) {
-      console.error("Background audio upload/linking failed:", getFriendlyErrorMessage(err));
-      // Add a non-destructive error message to the cleaned transcript for user visibility.
-      try {
-        const existingTranscription = await getTranscriptionById(transcriptionId);
-        if (existingTranscription) {
-            await updateTranscription(transcriptionId, {
-                cleaned_transcript: `<p><strong>FALHA NO UPLOAD DO ÁUDIO:</strong> O ficheiro de áudio original não pôde ser guardado. A transcrição de texto foi guardada com sucesso.</p>${existingTranscription.cleaned_transcript || ''}`
-            });
-        }
-      } catch (updateErr) {
-          console.error("Failed to update transcription with upload error message:", updateErr);
-      }
-    }
+const UpdateNotification: React.FC<{ onUpdate: () => void; onClose: () => void }> = ({ onUpdate, onClose }) => (
+    <div role="alert" className="fixed bottom-4 right-4 z-[100] animate-fade-in-up">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-2xl border border-gray-200 dark:border-gray-700 p-4 flex items-center gap-4 max-w-sm">
+            <div className="p-2 bg-cyan-100 dark:bg-cyan-900/50 rounded-full">
+                <ReloadIcon className="w-6 h-6 text-cyan-600 dark:text-cyan-400" />
+            </div>
+            <div className="flex-grow">
+                <p className="font-semibold text-gray-800 dark:text-gray-200">Atualização Disponível</p>
+                <p className="text-sm text-gray-600 dark:text-gray-400">Uma nova versão do Longani foi instalada.</p>
+            </div>
+            <button
+                onClick={onUpdate}
+                className="ml-auto flex-shrink-0 px-4 py-2 bg-cyan-500 text-white text-sm font-semibold rounded-md hover:bg-cyan-600 transition-colors"
+            >
+                Recarregar
+            </button>
+             <button onClick={onClose} className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-full flex-shrink-0">
+                <CloseIcon className="w-5 h-5" />
+            </button>
+        </div>
+    </div>
+);
+
+
+// --- REDUCER LOGIC ---
+const initialState: TranscriptionState = {
+    audioFile: null,
+    audioUrl: null,
+    rawTranscript: '',
+    cleanedTranscript: '',
+    processStage: 'idle',
+    error: null,
+    estimatedTime: null,
+    precisionPotential: null,
+    initialPrecision: null,
+    expandedTranscript: 'none',
+    fileSelectionSuccess: false,
+    outputPreference: 'both',
+    currentAudioId: null,
+    currentTranscriptionId: null,
+    transcriptionToUpdateId: null,
+    audioDuration: 0,
+    processingTime: null,
+    isDetectingLanguage: false,
+    detectedLanguage: null,
+    isRefining: false,
+    advancedTranscript: '',
+    advancedTranscriptTitle: '',
+    isSaving: false,
 };
 
-const App: React.FC = () => {
-  const { session, profile, loading, signOut, updateProfilePreferences } = useAuth();
-  const currentUser = profile; // Use profile as the main user object for app logic
+function transcriptionReducer(state: TranscriptionState, action: TranscriptionAction): TranscriptionState {
+    switch (action.type) {
+        case 'RESET':
+            if (state.audioUrl) URL.revokeObjectURL(state.audioUrl);
+            return initialState;
+        case 'SET_FILE':
+            return {
+                ...initialState,
+                audioFile: action.payload.file,
+                audioUrl: action.payload.url,
+                audioDuration: action.payload.duration,
+                estimatedTime: action.payload.estimatedTime,
+                precisionPotential: action.payload.precision,
+                initialPrecision: action.payload.precision,
+                fileSelectionSuccess: true,
+            };
+        case 'START_LANGUAGE_DETECTION':
+            return { ...state, isDetectingLanguage: true, detectedLanguage: null };
+        case 'SET_LANGUAGE':
+            return { ...state, isDetectingLanguage: false, detectedLanguage: action.payload.language, error: action.payload.error || state.error };
+        case 'FILE_ERROR':
+            return { ...initialState, error: action.payload.error };
+        case 'START_PROCESSING':
+            return { ...state, processStage: 'transcribing', error: null, rawTranscript: '', cleanedTranscript: '', advancedTranscript: '', processingTime: null };
+        case 'UPDATE_RAW_TRANSCRIPT': {
+            const newRawTranscript = state.rawTranscript + action.payload.chunk;
+            const dynamicPrecision = state.initialPrecision !== null ? Math.round(Math.max(40, state.initialPrecision - ((newRawTranscript.match(/\[inaudible\]/gi) || []).length * 3))) : null;
+            return { ...state, rawTranscript: newRawTranscript, precisionPotential: dynamicPrecision };
+        }
+        case 'FINALIZE_RAW_TRANSCRIPT': {
+            const finalPrecision = state.initialPrecision !== null ? Math.round(Math.max(40, state.initialPrecision - ((action.payload.transcript.match(/\[inaudible\]/gi) || []).length * 3))) : null;
+            return { ...state, rawTranscript: action.payload.transcript, processStage: 'cleaning', precisionPotential: finalPrecision };
+        }
+        case 'UPDATE_CLEANED_TRANSCRIPT':
+            return { ...state, cleanedTranscript: state.cleanedTranscript + action.payload.chunk };
+        case 'FINALIZE_CLEANED_TRANSCRIPT':
+            return { ...state, cleanedTranscript: action.payload.transcript };
+        case 'COMPLETE_PROCESSING':
+            return { ...state, processStage: 'completed', processingTime: action.payload.time };
+        case 'PROCESSING_ERROR':
+            return { ...state, processStage: 'idle', error: action.payload.error };
+        case 'SET_OUTPUT_PREFERENCE':
+            return { ...state, outputPreference: action.payload };
+        case 'TOGGLE_EXPANDED':
+            return { ...state, expandedTranscript: state.expandedTranscript === action.payload ? 'none' : action.payload };
+        case 'LOAD_EXISTING':
+            return { ...initialState, ...action.payload, processStage: 'completed' };
+        case 'START_SAVING':
+            return { ...state, isSaving: true, error: null };
+        case 'FINISH_SAVING':
+            return { ...state, isSaving: false, currentTranscriptionId: action.payload.transcriptionId, currentAudioId: action.payload.audioId ?? state.currentAudioId };
+        case 'SAVING_ERROR':
+            return { ...state, isSaving: false, error: action.payload.error };
+        case 'START_REFINING':
+            return { ...state, isRefining: true, advancedTranscript: '', advancedTranscriptTitle: action.payload.title, error: null };
+        case 'UPDATE_ADVANCED_TRANSCRIPT':
+            return { ...state, advancedTranscript: state.advancedTranscript + action.payload.chunk };
+        case 'FINISH_REFINING':
+            return { ...state, isRefining: false, advancedTranscript: action.payload.transcript, currentTranscriptionId: action.payload.transcriptionId || state.currentTranscriptionId };
+        case 'REFINING_ERROR':
+            return { ...state, isRefining: false, error: action.payload.error };
+        case 'SET_TRANSCRIPTION_TO_UPDATE':
+            return { ...state, transcriptionToUpdateId: action.payload.id };
+        case 'SET_CURRENT_AUDIO_ID':
+            return { ...state, currentAudioId: action.payload.id };
+        default:
+            return state;
+    }
+}
 
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
-  const [rawTranscript, setRawTranscript] = useState<string>('');
-  const [cleanedTranscript, setCleanedTranscript] = useState<string>('');
-  const [processStage, setProcessStage] = useState<ProcessStage>('idle');
-  const [error, setError] = useState<React.ReactNode | null>(null);
-  const [fileInputKey, setFileInputKey] = useState<number>(Date.now());
-  const [estimatedTime, setEstimatedTime] = useState<string | null>(null);
-  const [precisionPotential, setPrecisionPotential] = useState<number | null>(null);
-  const [initialPrecision, setInitialPrecision] = useState<number | null>(null);
-  const [isAppVisible, setIsAppVisible] = useState(false);
-  const [theme, setTheme] = useState<Theme>('dark');
-  const [preferredLanguage, setPreferredLanguage] = useState<PreferredLanguage>('pt');
-  const [preferredRecordingQuality, setPreferredRecordingQuality] = useState<RecordingQuality>('standard');
-  const [expandedTranscript, setExpandedTranscript] = useState<ExpandedTranscript>('none');
-  const [fileSelectionSuccess, setFileSelectionSuccess] = useState(false);
-  const [outputPreference, setOutputPreference] = useState<OutputPreference>('both');
+const App: React.FC = () => {
+  const { session, profile, loading } = useAuth();
+  const userStatus = useUserStatus();
+  
+  // Consolidate transcription state into a reducer
+  const [state, dispatch] = useReducer(transcriptionReducer, initialState);
+
+  // General App State
   const [page, setPage] = useState<string>(getCurrentPage());
-  const [nowPlaying, setNowPlaying] = useState<AudioRecording | null>(null);
-  const [nowPlayingUrl, setNowPlayingUrl] = useState<string | null>(null);
-  const [currentAudioId, setCurrentAudioId] = useState<string | null>(null);
-  const [currentTranscriptionId, setCurrentTranscriptionId] = useState<string | null>(null);
+  const [isAppVisible, setIsAppVisible] = useState(false);
   const [recentTranscriptions, setRecentTranscriptions] = useState<Transcription[]>([]);
   const [showDesktopLock, setShowDesktopLock] = useState(window.innerWidth >= 1280);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [monthlyUsage, setMonthlyUsage] = useState(0);
-  const [isUsageLocked, setIsUsageLocked] = useState(false);
-  const [trialUsageCount, setTrialUsageCount] = useState(0);
-  
-  // State for real-time progress and final stats
-  const [audioDuration, setAudioDuration] = useState<number>(0);
-  const [processingTime, setProcessingTime] = useState<string | null>(null);
-  const [isDetectingLanguage, setIsDetectingLanguage] = useState(false);
-  const [detectedLanguage, setDetectedLanguage] = useState<string | null>(null);
-
-  // State for Advanced Refinement
-  const [isRefineModalOpen, setIsRefineModalOpen] = useState(false);
-  const [isRefining, setIsRefining] = useState(false);
-  const [advancedTranscript, setAdvancedTranscript] = useState<string>('');
-  const [advancedTranscriptTitle, setAdvancedTranscriptTitle] = useState<string>('');
-
-  // State for manual saving logic
-  const [isSaving, setIsSaving] = useState(false);
-  const [transcriptionToUpdateId, setTranscriptionToUpdateId] = useState<string | null>(null);
-
-  // State for processing log overlay
   const [processingLog, setProcessingLog] = useState<{ steps: string[], currentStep: number } | null>(null);
 
-  const isEffectivelyDark = theme === 'dark';
+  // Now Playing State
+  const [nowPlaying, setNowPlaying] = useState<AudioRecording | null>(null);
+  const [nowPlayingUrl, setNowPlayingUrl] = useState<string | null>(null);
 
-  const isTrialPlan = currentUser?.plan === 'trial';
-  const MAX_FILE_SIZE_MB = isTrialPlan ? TRIAL_MAX_FILE_SIZE_MB : 100;
-  const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
+  // Service Worker Update State
+  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
+  const [showUpdatePrompt, setShowUpdatePrompt] = useState(false);
+
+  // Resets the entire app state, including the audio player.
+  // Used when loading a new file context (e.g., editing, transcribing from recordings).
+  const resetApp = useCallback(() => {
+    dispatch({ type: 'RESET' });
+    if (nowPlayingUrl) URL.revokeObjectURL(nowPlayingUrl);
+    setNowPlaying(null);
+    setNowPlayingUrl(null);
+  }, [nowPlayingUrl]);
+
+  // Resets only the transcription workspace state.
+  // Used for general navigation to the home page, allowing audio to continue playing.
+  const resetWorkspace = useCallback(() => {
+      dispatch({ type: 'RESET' });
+  }, [dispatch]);
 
   const loadTranscriptionForEditing = async (id: string) => {
     try {
@@ -313,51 +349,61 @@ const App: React.FC = () => {
             audioForPlayer = await getAudioRecording(transcription.audio_id);
         }
 
-        handleReset();
+        resetApp();
+        
+        const loadedState: Partial<TranscriptionState> = {
+            rawTranscript: transcription.raw_transcript || '',
+            cleanedTranscript: transcription.cleaned_transcript || '',
+            detectedLanguage: transcription.original_language || 'N/A',
+            currentTranscriptionId: transcription.id,
+        };
+        
+        if (transcription.refined_transcript && transcription.refined_content_type && transcription.refined_output_format) {
+             const title = `${transcription.refined_output_format} (${transcription.refined_content_type})`;
+             loadedState.advancedTranscript = transcription.refined_transcript;
+             loadedState.advancedTranscriptTitle = title;
+        }
 
         if (audioForPlayer) {
             const file = new File([audioForPlayer.audioBlob], audioForPlayer.name, { type: audioForPlayer.audioBlob.type });
-            setAudioFile(file);
-            setAudioUrl(URL.createObjectURL(file));
-            setCurrentAudioId(audioForPlayer.id);
+            loadedState.audioFile = file;
+            loadedState.audioUrl = URL.createObjectURL(file);
+            loadedState.currentAudioId = audioForPlayer.id;
             try {
                 const duration = await getAudioDuration(file);
-                setAudioDuration(duration);
-                 // Since we are loading, we can't re-detect the language easily without the base64.
-                // We'll set a placeholder. The original language is preserved in the raw transcript.
-                setDetectedLanguage(transcription.original_language || 'N/A');
-            } catch {
-                // Ignore duration errors on reload
-            }
-        }
-
-        setRawTranscript(transcription.raw_transcript || '');
-        setCleanedTranscript(transcription.cleaned_transcript || '');
-        if (transcription.refined_transcript && transcription.refined_content_type && transcription.refined_output_format) {
-            setAdvancedTranscript(transcription.refined_transcript);
-            setAdvancedTranscriptTitle(getRefinedTitle(transcription.refined_content_type, transcription.refined_output_format));
+                loadedState.audioDuration = duration;
+            } catch { /* Ignore duration errors on reload */ }
         }
         
-        setCurrentTranscriptionId(transcription.id);
-        setProcessStage('completed'); // Set the state to show results
+        dispatch({ type: 'LOAD_EXISTING', payload: loadedState });
     } catch (err) {
         console.error(err);
-        setError("Não foi possível carregar a transcrição para edição.");
+        dispatch({ type: 'PROCESSING_ERROR', payload: { error: "Não foi possível carregar a transcrição para edição." }});
         window.location.hash = '#/history'; // Redirect back if loading fails
     }
   };
 
 
   useEffect(() => {
-    const handleHashChange = () => {
-      setPage(getCurrentPage());
-    };
+    const handleHashChange = () => setPage(getCurrentPage());
     window.addEventListener('hashchange', handleHashChange, false);
-    return () => {
-      window.removeEventListener('hashchange', handleHashChange, false);
+    return () => window.removeEventListener('hashchange', handleHashChange, false);
+  }, []);
+  
+  // Effect to listen for service worker updates
+  useEffect(() => {
+    const handleSWUpdate = (event: Event) => {
+      const registration = (event as CustomEvent).detail;
+      if (registration && registration.waiting) {
+        setWaitingWorker(registration.waiting);
+        setShowUpdatePrompt(true);
+      }
     };
+    window.addEventListener('swUpdate', handleSWUpdate);
+    return () => window.removeEventListener('swUpdate', handleSWUpdate);
   }, []);
 
+  // Effect to load recent items or a specific item for editing
   useEffect(() => {
     const loadRecents = async () => {
         if (page === 'home') {
@@ -378,58 +424,8 @@ const App: React.FC = () => {
        loadRecents();
     }
   }, [page]);
-
-  useEffect(() => {
-    const calculateUsageAndLimits = async () => {
-        if (currentUser) {
-            try {
-                const usagePeriod = getCurrentUsagePeriod(currentUser);
-                const audioFiles: AudioFile[] = await getAudioFilesSince(usagePeriod.start.toISOString());
-                const usage = calculateMonthlyUsage(audioFiles);
-                setMonthlyUsage(usage);
-
-                const planLimits = getPlanLimits();
-                const currentPlanLimit = planLimits[currentUser.plan || 'basico'];
-                setIsUsageLocked(usage >= currentPlanLimit && currentPlanLimit !== Infinity);
-                
-                if (currentUser.plan === 'trial') {
-                    const count = await countUserAudioFiles(currentUser.id);
-                    setTrialUsageCount(count);
-                }
-
-            } catch (e) {
-                let errorDetails = '';
-                if (e instanceof Error) {
-                    errorDetails = e.message;
-                } else if (e && typeof e === 'object' && 'message' in e) {
-                    errorDetails = String((e as { message: string }).message);
-                } else {
-                    errorDetails = String(e);
-                }
-                console.error(`Failed to calculate monthly usage. Details: ${errorDetails}`, e);
-            }
-        } else {
-            setMonthlyUsage(0);
-            setIsUsageLocked(false);
-            setTrialUsageCount(0);
-        }
-    };
-
-    calculateUsageAndLimits();
-  }, [currentUser, page, processStage]);
-
-  // Load preferences from user profile
-  useEffect(() => {
-    if (profile?.preferences) {
-        const prefs = profile.preferences as { theme?: Theme, language?: PreferredLanguage, recordingQuality?: RecordingQuality };
-        if (prefs.theme) setTheme(prefs.theme);
-        if (prefs.language) setPreferredLanguage(prefs.language);
-        if (prefs.recordingQuality) setPreferredRecordingQuality(prefs.recordingQuality);
-    }
-  }, [profile]);
-
-
-  // This useEffect runs once on mount to handle initial loading animation.
+  
+  // Effect for initial app visibility animation
   useEffect(() => {
     const img = new Image();
     img.src = longaniLogoUrl;
@@ -448,183 +444,23 @@ const App: React.FC = () => {
     };
   }, []);
   
-  // This useEffect handles the desktop message banner.
+  // Effect to handle desktop lock message
   useEffect(() => {
-    const checkScreenSize = () => {
-        setShowDesktopLock(window.innerWidth >= 1280);
-    };
-
+    const checkScreenSize = () => setShowDesktopLock(window.innerWidth >= 1280);
     window.addEventListener('resize', checkScreenSize);
-    
-    // Initial check
     checkScreenSize();
-
-    return () => {
-        window.removeEventListener('resize', checkScreenSize);
-    };
+    return () => window.removeEventListener('resize', checkScreenSize);
   }, []);
 
-  // This useEffect handles applying the theme. The preference is saved via AuthContext.
+  // Effect to clean up object URLs
   useEffect(() => {
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [theme]);
-
-  const handleSetPreferredLanguage = (lang: PreferredLanguage) => {
-    setPreferredLanguage(lang);
-    updateProfilePreferences({ language: lang });
-  };
-
-  const handleSetTheme = (newTheme: Theme) => {
-    setTheme(newTheme);
-    updateProfilePreferences({ theme: newTheme });
-  };
-
-  const handleSetRecordingQuality = (quality: RecordingQuality) => {
-    setPreferredRecordingQuality(quality);
-    updateProfilePreferences({ recordingQuality: quality });
-  };
-
-  // Effect to clean up the audio object URLs to prevent memory leaks.
-  useEffect(() => {
+    const currentAudioUrl = state.audioUrl;
+    const currentNowPlayingUrl = nowPlayingUrl;
     return () => {
-      if (audioUrl) {
-        URL.revokeObjectURL(audioUrl);
-      }
-      if (nowPlayingUrl) {
-        URL.revokeObjectURL(nowPlayingUrl);
-      }
+      if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+      if (currentNowPlayingUrl) URL.revokeObjectURL(currentNowPlayingUrl);
     };
-  }, [audioUrl, nowPlayingUrl]);
-  
-  const handleCloseNowPlaying = useCallback(() => {
-    if (nowPlayingUrl) {
-        URL.revokeObjectURL(nowPlayingUrl);
-    }
-    setNowPlaying(null);
-    setNowPlayingUrl(null);
-  }, [nowPlayingUrl]);
-
-  const handleReset = useCallback(() => {
-    if (audioUrl) {
-      URL.revokeObjectURL(audioUrl);
-    }
-    setAudioFile(null);
-    setAudioUrl(null);
-    setRawTranscript('');
-    setCleanedTranscript('');
-    setError(null);
-    setProcessStage('idle');
-    setFileInputKey(Date.now());
-    setEstimatedTime(null);
-    setPrecisionPotential(null);
-    setInitialPrecision(null);
-    setExpandedTranscript('none');
-    setFileSelectionSuccess(false);
-    setOutputPreference('both');
-    setCurrentAudioId(null);
-    setCurrentTranscriptionId(null);
-    setTranscriptionToUpdateId(null);
-    setAudioDuration(0);
-    setProcessingTime(null);
-    setDetectedLanguage(null);
-    setIsDetectingLanguage(false);
-    handleCloseNowPlaying();
-    // Reset refinement state
-    setIsRefineModalOpen(false);
-    setIsRefining(false);
-    setAdvancedTranscript('');
-    setAdvancedTranscriptTitle('');
-    setIsSaving(false);
-    setProcessingLog(null);
-  }, [audioUrl, handleCloseNowPlaying]);
-
-  const blobToBase64 = (blob: Blob): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(blob);
-      reader.onload = () => {
-        const result = reader.result as string;
-        if (result && result.includes(',')) {
-            const base64String = result.split(',')[1];
-            resolve(base64String);
-        } else {
-            reject(new Error('Falha ao converter o ficheiro para Base64. Formato inválido.'));
-        }
-      };
-      reader.onerror = () => {
-        reader.abort();
-        reject(new Error(`Não foi possível ler o ficheiro. Pode estar corrompido ou o navegador pode não ter permissão.`));
-      };
-    });
-  };
-
-    const isTrialUploadsLocked = isTrialPlan && trialUsageCount >= TRIAL_MAX_FILES;
-
-  const handleFileChange = async (file: File | null) => {
-    handleReset();
-
-    if (file) {
-        if (isTrialUploadsLocked) {
-            setError(`Atingiu o limite de ${TRIAL_MAX_FILES} ficheiros para o plano Trial. Faça um upgrade para continuar.`);
-            setFileInputKey(Date.now());
-            return;
-        }
-      if (file.size > MAX_FILE_SIZE_BYTES) {
-        setError(`O ficheiro excede o limite de ${MAX_FILE_SIZE_MB} MB. Por favor, escolha um ficheiro mais pequeno.`);
-        setAudioFile(null);
-        setAudioUrl(null);
-        setFileInputKey(Date.now()); 
-        return;
-      }
-      
-      setAudioFile(file);
-      setAudioUrl(URL.createObjectURL(file));
-      setFileSelectionSuccess(true);
-      setCurrentAudioId(null); // Reset audio ID for new uploads
-
-      // Start language detection immediately
-      setIsDetectingLanguage(true);
-      setDetectedLanguage(null);
-      try {
-          const audioBase64 = await blobToBase64(file);
-          const lang = await detectLanguage(audioBase64, file.type);
-          setDetectedLanguage(lang);
-      } catch (err) {
-          console.error('Error detecting language:', err);
-          setError("Não foi possível detetar o idioma do áudio. Pode continuar, mas a transcrição pode ser menos precisa.");
-          setDetectedLanguage("Indeterminate"); // Set a fallback
-      } finally {
-          setIsDetectingLanguage(false);
-      }
-
-      try {
-        const duration = await getAudioDuration(file);
-        if (isTrialPlan && duration > TRIAL_MAX_DURATION_SECONDS) {
-            setError(`O ficheiro excede o limite de ${TRIAL_MAX_DURATION_SECONDS / 60} minutos de duração para o plano Trial.`);
-            setAudioFile(null);
-            setAudioUrl(null);
-            setFileInputKey(Date.now());
-            return;
-        }
-        setAudioDuration(duration); // Store numeric duration for progress calculation
-        setEstimatedTime(estimateProcessingTime(duration));
-        const potential = estimatePrecisionPotential(file.name);
-        setPrecisionPotential(potential);
-        setInitialPrecision(potential);
-      } catch (err) {
-        console.error('Erro ao obter metadados do áudio:', err);
-        const errorMessage = 'Não foi possível ler a duração do áudio. O ficheiro pode estar corrompido ou num formato não suportado.';
-        setError(`${errorMessage} As estimativas não estão disponíveis, mas ainda pode processar o ficheiro.`);
-        setEstimatedTime(null);
-        setPrecisionPotential(null);
-        setInitialPrecision(null);
-      }
-    }
-  };
+  }, [state.audioUrl, nowPlayingUrl]);
 
   const handleTranscribeFromRecordings = async (audio: AudioRecording) => {
     const steps = [
@@ -633,295 +469,95 @@ const App: React.FC = () => {
         'A analisar o idioma do áudio...',
         'A finalizar e a redirecionar...'
     ];
-
     setProcessingLog({ steps, currentStep: 0 }); // Show log, step 1
     
-    // Step 1: Prepare the file object
-    const file = new File([audio.audioBlob], audio.name, {
-      type: audio.audioBlob.type || 'audio/wav',
-    });
-    
-    // Step 2: Clear old state and prepare for new transcription
     await new Promise(resolve => setTimeout(resolve, 500)); // UX delay
     setProcessingLog(prev => prev ? { ...prev, currentStep: 1 } : null); // Show log, step 2
 
-    // This is a manual reset, to avoid clearing the processing log state
-    if (audioUrl) { URL.revokeObjectURL(audioUrl); }
-    setRawTranscript('');
-    setCleanedTranscript('');
-    setError(null);
-    setProcessStage('idle');
-    setFileInputKey(Date.now());
-    setEstimatedTime(null);
-    setPrecisionPotential(null);
-    setInitialPrecision(null);
-    setExpandedTranscript('none');
-    setFileSelectionSuccess(true); // Setting this now
-    setOutputPreference('both');
-    setCurrentTranscriptionId(null);
-    setTranscriptionToUpdateId(null);
-    setAudioDuration(0);
-    setProcessingTime(null);
-    setDetectedLanguage(null);
-    setIsDetectingLanguage(false);
-    handleCloseNowPlaying();
-    setIsRefineModalOpen(false);
-    setIsRefining(false);
-    setAdvancedTranscript('');
-    setAdvancedTranscriptTitle('');
-    setIsSaving(false);
-    
-    // Now set the new file state
-    setAudioFile(file);
-    setAudioUrl(URL.createObjectURL(file));
-    setCurrentAudioId(audio.id);
-    
+    // Reset state via reducer
+    resetApp();
+
+    const file = new File([audio.audioBlob], audio.name, {
+      type: audio.audioBlob.type || 'audio/wav',
+    });
+
     try {
         const existingTranscription = await getTranscriptionByAudioId(audio.id);
         if (existingTranscription) {
-            setTranscriptionToUpdateId(existingTranscription.id);
+            dispatch({ type: 'SET_TRANSCRIPTION_TO_UPDATE', payload: { id: existingTranscription.id } });
         }
     } catch (e) { console.error("Could not fetch existing transcription for update", e); }
+    
+    dispatch({ type: 'SET_CURRENT_AUDIO_ID', payload: { id: audio.id } });
 
-    // Step 3: Detect language and metadata
+    // This is a simplified version of handleFileChange, dispatched directly.
+    // It is simplified because we don't need to check trial limits here as it's a pre-existing file.
+    try {
+        const duration = await getAudioDuration(file);
+        const url = URL.createObjectURL(file);
+        const estimatedTime = estimateProcessingTime(duration);
+        const precision = estimatePrecisionPotential(file.name);
+        dispatch({ type: 'SET_FILE', payload: { file, url, duration, estimatedTime, precision } });
+    } catch (err) {
+        const errorMessage = 'Não foi possível ler a duração do áudio. O ficheiro pode estar corrompido ou num formato não suportado.';
+        dispatch({ type: 'FILE_ERROR', payload: { error: errorMessage }});
+    }
+
     await new Promise(resolve => setTimeout(resolve, 500)); // UX delay
     setProcessingLog(prev => prev ? { ...prev, currentStep: 2 } : null); // Show log, step 3
     
-    setIsDetectingLanguage(true);
-    let langDetectionError: string | null = null;
+    dispatch({ type: 'START_LANGUAGE_DETECTION' });
     try {
-        const audioBase64 = await blobToBase64(file);
-        const lang = await detectLanguage(audioBase64, file.type);
-        setDetectedLanguage(lang);
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = async () => {
+            const base64 = (reader.result as string).split(',')[1];
+            const lang = await detectLanguage(base64, file.type);
+            dispatch({ type: 'SET_LANGUAGE', payload: { language: lang } });
+        };
+        reader.onerror = () => { throw new Error("File reading failed"); };
     } catch (err) {
-        console.error('Error detecting language:', err);
-        langDetectionError = "Não foi possível detetar o idioma do áudio.";
-        setDetectedLanguage("Indeterminate");
-    } finally {
-        setIsDetectingLanguage(false);
+        dispatch({ type: 'SET_LANGUAGE', payload: { language: "Indeterminate", error: "Não foi possível detetar o idioma." } });
     }
 
-    try {
-        const duration = await getAudioDuration(file);
-        setAudioDuration(duration);
-        setEstimatedTime(estimateProcessingTime(duration));
-        const potential = estimatePrecisionPotential(file.name);
-        setPrecisionPotential(potential);
-        setInitialPrecision(potential);
-    } catch (err) {
-        console.error('Erro ao obter metadados do áudio:', err);
-        const errorMessage = 'Não foi possível ler a duração do áudio. O ficheiro pode estar corrompido ou num formato não suportado.';
-        setError(`${errorMessage} As estimativas não estão disponíveis, mas ainda pode processar o ficheiro.`);
-        setEstimatedTime(null);
-        setInitialPrecision(null);
-    }
-
-    if (langDetectionError) {
-        setError(langDetectionError);
-    }
-
-    // Step 4: Finalize and redirect
-    await new Promise(resolve => setTimeout(resolve, 1000)); // Longer delay before redirect
+    await new Promise(resolve => setTimeout(resolve, 1000)); // Longer delay
     setProcessingLog(prev => prev ? { ...prev, currentStep: 3 } : null); // Show log, step 4
     
     await new Promise(resolve => setTimeout(resolve, 500));
     window.location.hash = '#/home';
-    setProcessingLog(null); // Hide after navigation is triggered
+    setProcessingLog(null); // Hide after navigation
   };
 
+  const stopNowPlaying = useCallback(() => {
+    // If audio is currently playing in the bar, stop it.
+    if (nowPlaying) {
+        if (nowPlayingUrl) URL.revokeObjectURL(nowPlayingUrl);
+        setNowPlaying(null);
+        setNowPlayingUrl(null);
+    }
+  }, [nowPlaying, nowPlayingUrl]);
+
   const handlePlayAudio = (audio: AudioRecording) => {
-    if (nowPlaying?.id === audio.id) {
-        return; 
-    }
-    if (nowPlayingUrl) {
-        URL.revokeObjectURL(nowPlayingUrl);
-    }
+    if (nowPlaying?.id === audio.id) return;
+    if (nowPlayingUrl) URL.revokeObjectURL(nowPlayingUrl);
     const url = URL.createObjectURL(audio.audioBlob);
     setNowPlaying(audio);
     setNowPlayingUrl(url);
   };
 
-    const trialIsActive = isTrialActive(currentUser?.created_at);
-    const trialDaysRemaining = getTrialDaysRemaining(currentUser?.created_at);
-    const trialHasExpired = !!currentUser?.created_at && !trialIsActive;
-    const isTrialExpiredLocked = currentUser?.plan === 'trial' && trialHasExpired;
-    const isFeatureLocked = isTrialExpiredLocked || isUsageLocked || isTrialUploadsLocked;
-
-  const handleProcessAudio = useCallback(async () => {
-    if (!audioFile || !currentUser) {
-      setError('Por favor, selecione um ficheiro de áudio e inicie a sessão para processar.');
-      return;
+  const handleUpdateAvailable = () => {
+    if (waitingWorker) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+      });
+      waitingWorker.postMessage({ type: 'SKIP_WAITING' });
     }
-    
-    if (isFeatureLocked) {
-        let lockMessage;
-        if (isTrialExpiredLocked) {
-            lockMessage = <>O seu período de teste terminou. Para continuar a transcrever, é necessário fazer um upgrade.</>;
-        } else if (isTrialUploadsLocked) {
-            lockMessage = <>Atingiu o limite de {TRIAL_MAX_FILES} ficheiros do seu plano Trial. Para continuar a transcrever, faça um upgrade.</>;
-        } else { // Must be usage locked
-            lockMessage = <>O seu limite de utilização mensal foi atingido. Para obter mais tempo de transcrição, faça um upgrade ou aguarde pelo próximo ciclo.</>;
-        }
-        setError(lockMessage);
-        return;
-    }
-    
-    if (!detectedLanguage) {
-        setError("O idioma do áudio ainda não foi detetado. Por favor, aguarde ou recarregue o ficheiro.");
-        return;
-    }
-
-    handleCloseNowPlaying();
-  
-    // Reset previous results, but keep IDs for saving later
-    setError(null);
-    setRawTranscript('');
-    setCleanedTranscript('');
-    setAdvancedTranscript('');
-    setAdvancedTranscriptTitle('');
-    setProcessingTime(null);
-    
-    const startTime = Date.now();
-  
-    try {
-      const audioBase64 = await blobToBase64(audioFile);
-      const audioMimeType = audioFile.type;
-  
-      setProcessStage('transcribing');
-      let fullRawTranscript = '';
-      for await (const chunk of transcribeAudio(audioBase64, audioMimeType)) {
-        fullRawTranscript += chunk;
-        setRawTranscript(fullRawTranscript);
-        if (initialPrecision !== null) {
-            const dynamicPrecision = calculateDynamicPrecision(fullRawTranscript, initialPrecision);
-            setPrecisionPotential(dynamicPrecision);
-        }
-      }
-      setRawTranscript(fullRawTranscript);
-  
-      if (initialPrecision !== null) {
-        const dynamicPrecision = calculateDynamicPrecision(fullRawTranscript, initialPrecision);
-        setPrecisionPotential(dynamicPrecision);
-      }
-
-      if (fullRawTranscript.trim()) {
-        setProcessStage('cleaning');
-        let finalHtml = '';
-        const targetLanguageName = languageMap[preferredLanguage];
-        for await (const chunk of cleanTranscript(fullRawTranscript, detectedLanguage, targetLanguageName)) {
-          finalHtml += chunk;
-          setCleanedTranscript(finalHtml);
-        }
-      } else {
-        setCleanedTranscript('');
-      }
-      
-      setProcessStage('completed');
-      const endTime = Date.now();
-      setProcessingTime(formatProcessingTime(endTime - startTime));
-    } catch (err) {
-      const friendlyMessage = getFriendlyErrorMessage(err);
-      setError(friendlyMessage);
-      setProcessStage('idle');
-    }
-  }, [audioFile, initialPrecision, handleCloseNowPlaying, preferredLanguage, detectedLanguage, currentUser, isFeatureLocked, isTrialExpiredLocked, isUsageLocked, isTrialUploadsLocked]);
-
-  const handleSaveTranscription = async () => {
-    if (!audioFile || !profile || isSaving) return;
-
-    setIsSaving(true);
-    setError(null);
-
-    try {
-        if (transcriptionToUpdateId) {
-            // This is an update, so the audio file already exists.
-            // This operation should be fast as it's just text.
-            await updateTranscription(transcriptionToUpdateId, {
-                raw_transcript: rawTranscript,
-                cleaned_transcript: cleanedTranscript,
-                original_language: detectedLanguage,
-                filename: audioFile.name,
-            });
-            setCurrentTranscriptionId(transcriptionToUpdateId);
-        } else {
-            // This is a new transcription. This is the part to optimize.
-            // 1. Optimistically save text data for a snappy UI response.
-            const newTranscription = await addTranscription({
-                filename: audioFile.name,
-                raw_transcript: rawTranscript,
-                cleaned_transcript: cleanedTranscript,
-                audio_id: null, // Temporarily null
-                user_id: profile.id,
-                original_language: detectedLanguage,
-            });
-            
-            // 2. Update UI immediately.
-            setCurrentTranscriptionId(newTranscription.id);
-            
-            // 3. Start background audio upload and linking. This is not awaited.
-            uploadAndLinkAudio(newTranscription.id, audioFile, profile.id);
-        }
-    } catch (err) {
-        setError(getFriendlyErrorMessage(err));
-    } finally {
-        setIsSaving(false);
-    }
-  };
-
-  const handleRefine = async (contentType: RefineContentType, outputFormat: RefineOutputFormat) => {
-    if (!rawTranscript) {
-      setError('Não há texto literal para refinar.');
-      return;
-    }
-
-    setIsRefining(true);
-    setError(null);
-    setAdvancedTranscript('');
-    
-    setAdvancedTranscriptTitle(getRefinedTitle(contentType, outputFormat));
-
-    let fullRefinedText = '';
-    let refinementError: Error | null = null;
-
-    try {
-      for await (const chunk of refineTranscript(rawTranscript, contentType, outputFormat, preferredLanguage)) {
-          fullRefinedText += chunk;
-          setAdvancedTranscript(fullRefinedText);
-      }
-    } catch (err) {
-      refinementError = err as Error;
-      const friendlyMessage = getFriendlyErrorMessage(err);
-      setError(`Ocorreu um erro durante o refinamento: ${friendlyMessage}`);
-    } finally {
-      setIsRefining(false);
-      setIsRefineModalOpen(false);
-
-      if (currentTranscriptionId && !refinementError) {
-          try {
-              await updateTranscription(currentTranscriptionId, {
-                  refined_transcript: fullRefinedText,
-                  refined_content_type: contentType,
-                  refined_output_format: outputFormat,
-              });
-          } catch (dbError) {
-              console.error("Failed to save refinement:", dbError);
-              // Optionally show a non-blocking error to the user, for now logging is sufficient
-          }
-      }
-    }
-  };
-
-  const handleToggleTranscript = (transcriptType: 'raw' | 'cleaned') => {
-    setExpandedTranscript(current => (current === transcriptType ? 'none' : transcriptType));
+    setShowUpdatePrompt(false);
   };
 
   const handleHistoryClick = (transcriptionId: string) => {
     window.location.hash = `#/transcription/${transcriptionId}`;
   };
-
-  const isProcessing = processStage === 'transcribing' || processStage === 'cleaning';
-  const isAccordionMode = processStage === 'completed' && !advancedTranscript;
-  const finalDisplayIsSingleColumn = (processStage === 'completed' && outputPreference !== 'both') || !!advancedTranscript;
 
   const renderPage = () => {
     if (loading) {
@@ -941,35 +577,29 @@ const App: React.FC = () => {
                 return <LoginPage />;
         }
     }
-
-    // From here, we know the user is authenticated.
-    const trialWarningDays = 5;
-    const shouldShowTrialWarning = currentUser?.plan === 'trial' && trialIsActive && trialDaysRemaining <= trialWarningDays;
-    const shouldShowTrialExpiredBanner = isTrialExpiredLocked;
-    const shouldShowMonthlyLimitBanner = isUsageLocked && !isTrialExpiredLocked;
-
+    
     const urlParts = page.split('/');
-
     switch (urlParts[0]) {
       case 'profile':
         return <ProfilePage />;
       case 'history':
         return <HistoryPage />;
       case 'recordings':
-        return <RecordingsPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} uploadDisabled={currentUser?.plan === 'trial'} preferredQuality={preferredRecordingQuality} />;
+        const preferredRecordingQuality = (profile?.preferences as any)?.recordingQuality || 'standard';
+        return <RecordingsPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} uploadDisabled={profile?.plan === 'trial'} preferredQuality={preferredRecordingQuality} onStartRecording={stopNowPlaying} />;
       case 'favorites':
-        if (currentUser?.plan === 'trial') {
+        if (profile?.plan === 'trial') {
             return <FeatureLockedPage featureName="Favoritos" requiredPlan="Básico ou superior" />;
         }
         return <FavoritesPage onTranscribe={handleTranscribeFromRecordings} onPlayAudio={handlePlayAudio} />;
       case 'teams':
-        const canAccessTeams = currentUser?.plan === 'ideal' || currentUser?.plan === 'premium';
+        const canAccessTeams = profile?.plan === 'ideal' || profile?.plan === 'premium';
         if (!canAccessTeams) {
             return <FeatureLockedPage featureName="Equipas" requiredPlan="Ideal ou superior" />;
         }
         return <TeamsPage />;
       case 'translations':
-        if (currentUser?.plan === 'trial') {
+        if (profile?.plan === 'trial') {
             return <FeatureLockedPage featureName="Traduções" requiredPlan="Básico ou superior" />;
         }
         return <TranslationsPage />;
@@ -977,384 +607,48 @@ const App: React.FC = () => {
           if (urlParts[1]) {
               return <TranscriptionDetailPage transcriptionId={urlParts[1]} onEdit={loadTranscriptionForEditing} />;
           }
-          // Fallback to home if no ID
-          window.location.hash = '#/home';
+          window.location.hash = '#/home'; // Fallback
           return null;
+      case 'plans':
+        return <PlansPage />;
       case 'home':
       default:
         const recentHistorySection = (
-            <div className="w-full mt-12 animate-fade-in">
-              <div className="max-w-3xl mx-auto">
-                <h4 className="text-center text-sm font-semibold text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider">Histórico Recente</h4>
-                {recentTranscriptions.length > 0 ? (
-                    <ul className="divide-y divide-gray-200/60 dark:divide-gray-700/60">
+            <div className="w-full max-w-3xl mx-auto mb-8 animate-fade-in">
+              <h4 className="text-center text-sm font-semibold text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wider">Histórico Recente</h4>
+              {recentTranscriptions.length > 0 ? (
+                  <div className="max-h-60 overflow-y-auto pr-2">
+                    <ul className="space-y-3">
                         {recentTranscriptions.map(t => (
                             <li key={t.id}>
-                                <button onClick={() => handleHistoryClick(t.id)} className="w-full text-left flex justify-between items-center py-3 hover:bg-gray-500/10 rounded-md transition-colors -mx-2 px-2">
-                                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate pr-4" title={t.filename}>{t.filename}</span>
-                                    <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
-                                        {new Date(t.created_at).toLocaleString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                                    </span>
+                                <button onClick={() => handleHistoryClick(t.id)} className="w-full text-left p-4 bg-white/60 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-[#24a9c5] dark:hover:border-[#24a9c5] hover:shadow-md transition-all">
+                                    <div className="flex justify-between items-center gap-4">
+                                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate" title={t.filename}>{t.filename}</span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400 flex-shrink-0">
+                                            {new Date(t.created_at).toLocaleString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                        </span>
+                                    </div>
                                 </button>
                             </li>
                         ))}
                     </ul>
-                ) : (
-                    <div className="text-center py-6">
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Nenhuma transcrição recente encontrada.</p>
-                    </div>
-                )}
-              </div>
+                  </div>
+              ) : (
+                  <div className="text-center py-6 bg-white/60 dark:bg-gray-800/60 rounded-lg border border-gray-200 dark:border-gray-700">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">Nenhuma transcrição recente encontrada.</p>
+                  </div>
+              )}
             </div>
         );
         return (
           <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-grow flex flex-col">
-            {shouldShowTrialWarning && (
-                 <div className="max-w-3xl mx-auto w-full p-4 mb-6 bg-orange-100 dark:bg-orange-900/40 rounded-lg border border-orange-200 dark:border-orange-800/60 text-center animate-fade-in">
-                    <p className="font-semibold text-orange-800 dark:text-orange-200">
-                        Aviso do Período de Teste
-                    </p>
-                    <p className="text-sm text-orange-700 dark:text-orange-300 mt-1">
-                        {trialDaysRemaining > 1 ? `O seu período de teste termina em ${trialDaysRemaining} dias.` : 'O seu período de teste termina hoje!'} Considere fazer um upgrade para manter o acesso.
-                    </p>
-                </div>
-            )}
-            {shouldShowTrialExpiredBanner && (
-                <div className="max-w-3xl mx-auto w-full p-4 mb-6 bg-yellow-100 dark:bg-yellow-900/40 rounded-lg border border-yellow-200 dark:border-yellow-800/60 text-center animate-fade-in">
-                    <p className="font-semibold text-yellow-800 dark:text-yellow-200">
-                        O seu período de teste gratuito terminou.
-                    </p>
-                    <p className="text-sm text-yellow-700 dark:text-yellow-300 mt-1">
-                        Para continuar a transcrever e usar todas as funcionalidades, por favor, escolha um plano.
-                    </p>
-                </div>
-            )}
-            {shouldShowMonthlyLimitBanner && (
-                 <div className="max-w-3xl mx-auto w-full p-4 mb-6 bg-red-100 dark:bg-red-900/40 rounded-lg border border-red-200 dark:border-red-800/60 text-center animate-fade-in">
-                    <p className="font-semibold text-red-800 dark:text-red-200">
-                        Limite Mensal Atingido
-                    </p>
-                    <p className="text-sm text-red-700 dark:text-red-300 mt-1">
-                        Utilizou todo o tempo de transcrição do seu plano para este mês. O seu limite será reiniciado no próximo ciclo.
-                    </p>
-                </div>
-            )}
-            {!audioFile && (
-              <div className="flex-grow flex flex-col">
-                <div className="flex-grow flex flex-col justify-center items-center">
-                    {isTrialPlan && (
-                        <div className="max-w-3xl mx-auto w-full p-3 mb-4 bg-cyan-50 dark:bg-cyan-900/30 rounded-lg border border-cyan-100 dark:border-cyan-800 text-center animate-fade-in">
-                            <p className="font-semibold text-cyan-800 dark:text-cyan-200">
-                                Plano Trial Ativo
-                            </p>
-                            <p className="text-sm text-cyan-700 dark:text-cyan-300 mt-1">
-                                Ficheiros: {trialUsageCount} / {TRIAL_MAX_FILES} | Limites: {TRIAL_MAX_FILE_SIZE_MB}MB e {TRIAL_MAX_DURATION_SECONDS / 60} min por ficheiro.
-                            </p>
-                        </div>
-                    )}
-                    <div className="max-w-3xl mx-auto w-full bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
-                      <div className="flex flex-col sm:flex-row gap-4 items-center justify-center">
-                        <FileUpload key={fileInputKey} onFileChange={handleFileChange} disabled={isProcessing || isTrialUploadsLocked} fileSelected={fileSelectionSuccess} />
-                        <GoogleDrivePicker onFileImported={handleFileChange} disabled={isTrialUploadsLocked}/>
-                      </div>
-                      <p className="text-gray-500 dark:text-gray-400 text-xs mt-4 text-center">
-                        Ficheiros de áudio suportados (.mp3, .wav, .m4a, etc.) com um limite de {MAX_FILE_SIZE_MB}MB.
-                      </p>
-                      {preferredLanguage !== 'pt' && (
-                          <div className="text-center text-sm text-cyan-700 dark:text-cyan-400 mt-4 bg-cyan-50 dark:bg-cyan-900/30 p-3 rounded-lg border border-cyan-100 dark:border-cyan-800">
-                              <InfoIcon className="w-4 h-4 inline-block mr-2 align-middle" />
-                              <span className="align-middle">Nota: O texto formatado final será entregue em <strong>{languageMap[preferredLanguage]}</strong>.</span>
-                          </div>
-                      )}
-                    </div>
-                    <div className="my-4 flex items-center w-full max-w-xs text-center" aria-hidden="true">
-                        <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
-                        <span className="flex-shrink mx-4 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Ou</span>
-                        <div className="flex-grow border-t border-gray-300 dark:border-gray-600"></div>
-                    </div>
-                    <div className="text-center text-sm text-gray-600 dark:text-gray-400">
-                        Pode <button onClick={() => window.location.hash = '#/recordings'} className="font-medium text-[#24a9c5] hover:underline focus:outline-none focus:ring-1 focus:ring-[#24a9c5] rounded">gravar um áudio</button>.
-                    </div>
-                </div>
-                {recentHistorySection}
-              </div>
-            )}
-
-            {audioFile && processStage === 'idle' && (
-              <div className="max-w-5xl mx-auto animate-fade-in-up w-full">
-                <div className="lg:grid lg:grid-cols-5 lg:gap-8 items-start">
-                    <div className="lg:col-span-3">
-                        <div className="bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
-                            <h2 className="text-xl font-bold text-center text-gray-800 dark:text-gray-200 mb-4">Ficheiro Pronto a Processar</h2>
-                            <p className="text-center text-gray-600 dark:text-gray-400 break-words mb-4">{audioFile.name}</p>
-                            {audioUrl && (
-                              <CustomAudioPlayer src={audioUrl} />
-                            )}
-                        </div>
-                    </div>
-                    <div className="lg:col-span-2 mt-6 lg:mt-0">
-                       <div className="text-left p-4 bg-white/60 dark:bg-gray-800/60 border border-gray-200/80 dark:border-gray-700/80 rounded-lg shadow-lg">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              {estimatedTime && (
-                                  <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
-                                      <ClockIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
-                                      <div>
-                                          <p className="font-semibold">Tempo Estimado</p>
-                                          <p className="text-gray-600 dark:text-gray-400">{estimatedTime}</p>
-                                      </div>
-                                  </div>
-                              )}
-                              {precisionPotential !== null && (
-                                 <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
-                                     <TargetIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
-                                     <div>
-                                         <p className="font-semibold">Potencial de Precisão</p>
-                                         <p className="text-gray-600 dark:text-gray-400">{precisionPotential}%</p>
-                                     </div>
-                                 </div>
-                              )}
-                               <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
-                                  <TranslateIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
-                                  <div>
-                                      <p className="font-semibold">Idioma Detetado</p>
-                                      {isDetectingLanguage ? (
-                                          <div className="flex items-center gap-2">
-                                              <Loader className="w-4 h-4 text-gray-400" />
-                                              <span className="text-gray-500 dark:text-gray-400 text-xs">A analisar...</span>
-                                          </div>
-                                      ) : (
-                                          <p className="text-gray-600 dark:text-gray-400">{translateLanguageName(detectedLanguage)}</p>
-                                      )}
-                                  </div>
-                              </div>
-                          </div>
-                           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                            <div className="flex items-start gap-3 text-sm text-gray-700 dark:text-gray-300">
-                              <ColumnsIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
-                              <div>
-                                <p id="output-preference-label" className="font-semibold mb-2">Visualização do Resultado</p>
-                                <div role="radiogroup" aria-labelledby="output-preference-label" className="flex flex-wrap gap-2">
-                                  <button role="radio" aria-checked={outputPreference === 'both'} onClick={() => setOutputPreference('both')} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${outputPreference === 'both' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>Ambos</button>
-                                  <button role="radio" aria-checked={outputPreference === 'raw'} onClick={() => setOutputPreference('raw')} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${outputPreference === 'raw' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>Apenas Literal</button>
-                                  <button role="radio" aria-checked={outputPreference === 'cleaned'} onClick={() => setOutputPreference('cleaned')} className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${outputPreference === 'cleaned' ? 'bg-[#24a9c5] text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'}`}>Apenas Formatado</button>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                    </div>
-                </div>
-                <div className="mt-8 flex flex-col gap-3 items-center justify-center">
-                  <button onClick={handleProcessAudio} disabled={isProcessing || isDetectingLanguage} className="w-full sm:w-auto flex items-center justify-center gap-2 bg-[#24a9c5] text-white font-semibold py-3 px-8 rounded-lg shadow-md hover:bg-[#1e8a9f] disabled:bg-gray-300 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105">
-                    <ArrowRightIcon className="w-5 h-5" />
-                    <span>Iniciar Processo</span>
-                  </button>
-                  <button onClick={handleReset} className="text-sm text-gray-500 dark:text-gray-400 hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-900 rounded-md p-1">
-                    Substituir Áudio
-                  </button>
-                </div>
-              </div>
-            )}
-            
-            {error && <div className="text-center text-red-800 bg-red-100 p-3 my-4 rounded-lg border border-red-200 dark:bg-red-900/50 dark:text-red-300 dark:border-red-800/50">{error}</div>}
-
-            {processStage !== 'idle' && (
-              <div className="mt-6 max-w-3xl mx-auto w-full">
-                <div className="mb-6 p-4 bg-white/60 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg">
-                    <div className="text-center">
-                      <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">
-                        {processStage === 'completed' ? 'Ficheiro Processado:' : 'A processar o ficheiro:'}
-                      </p>
-                      {isProcessing ? (
-                          <div className="relative w-full flex overflow-x-hidden h-7 items-center">
-                              <div className="animate-marquee whitespace-nowrap flex items-center">
-                                  <p className="text-lg font-bold text-gray-800 dark:text-gray-200 px-4">
-                                      {audioFile?.name}
-                                  </p>
-                              </div>
-                              <div className="absolute top-0 animate-marquee2 whitespace-nowrap flex items-center h-full">
-                                  <p className="text-lg font-bold text-gray-800 dark:text-gray-200 px-4">
-                                      {audioFile?.name}
-                                  </p>
-                              </div>
-                          </div>
-                      ) : (
-                          <p className="text-lg font-bold text-gray-800 dark:text-gray-200 truncate px-4">
-                              {audioFile?.name}
-                          </p>
-                      )}
-                    </div>
-                    {processStage === 'completed' && audioUrl ? (
-                      <>
-                        <div className="mt-4">
-                          <CustomAudioPlayer src={audioUrl} />
-                        </div>
-                        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-                            {processingTime && (
-                                <div className="flex items-start gap-3 text-gray-700 dark:text-gray-300 p-3 bg-gray-100 dark:bg-gray-900/50 rounded-lg">
-                                    <ClockIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
-                                    <div>
-                                        <p className="font-semibold">Tempo de Processamento</p>
-
-                                        <p className="text-gray-600 dark:text-gray-400">{processingTime}</p>
-                                    </div>
-                                </div>
-                            )}
-                            {precisionPotential !== null && (
-                                <div className="flex items-start gap-3 text-gray-700 dark:text-gray-300 p-3 bg-gray-100 dark:bg-gray-900/50 rounded-lg">
-                                    <TargetIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
-                                    <div>
-                                        <p className="font-semibold">Precisão Final Atingida</p>
-                                        <p className="text-gray-600 dark:text-gray-400">{precisionPotential}%</p>
-                                    </div>
-                                </div>
-                            )}
-                             {detectedLanguage && (
-                                <div className="flex items-start gap-3 text-gray-700 dark:text-gray-300 p-3 bg-gray-100 dark:bg-gray-900/50 rounded-lg">
-                                    <TranslateIcon className="w-5 h-5 text-[#24a9c5] flex-shrink-0 mt-1" />
-                                    <div>
-                                        <p className="font-semibold">Idioma Original</p>
-                                        <p className="text-gray-600 dark:text-gray-400">{translateLanguageName(detectedLanguage)}</p>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                      </>
-                    ) : (
-                      <div className="mt-2 flex flex-wrap justify-center items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-                          {estimatedTime && (
-                              <span className="flex items-center gap-1">
-                                  <ClockIcon className="w-4 h-4" />
-                                  <span>Tempo Est.: {estimatedTime}</span>
-                              </span>
-                          )}
-                          {precisionPotential !== null && (
-                              <span className="flex items-center gap-1">
-                                  <TargetIcon className="w-4 h-4" />
-                                  <span>Potencial: {precisionPotential}%</span>
-                              </span>
-                          )}
-                           {isDetectingLanguage && (
-                               <span className="flex items-center gap-1">
-                                    <Loader className="w-3 h-3"/>
-                                    <span>A detetar idioma...</span>
-                               </span>
-                           )}
-                           {detectedLanguage && !isDetectingLanguage && (
-                               <span className="flex items-center gap-1">
-                                    <TranslateIcon className="w-4 h-4" />
-                                    <span>{translateLanguageName(detectedLanguage)}</span>
-                               </span>
-                           )}
-                      </div>
-                    )}
-                </div>
-                <ProgressBar stage={processStage} />
-              </div>
-            )}
-            
-            {(rawTranscript || cleanedTranscript || isProcessing || advancedTranscript || isRefining) && (
-                <div className={`mt-12 grid grid-cols-1 ${!advancedTranscript && !isRefining && (finalDisplayIsSingleColumn ? 'lg:grid-cols-1' : 'lg:grid-cols-2')} gap-8`}>
-                    {(isProcessing || (processStage === 'completed' && (outputPreference === 'raw' || outputPreference === 'both'))) && <TranscriptDisplay 
-                        title="Texto Literal"
-                        text={rawTranscript}
-                        isLoading={processStage === 'transcribing'}
-                        isComplete={processStage !== 'transcribing' && rawTranscript.length > 0}
-                        isExpanded={!isAccordionMode || expandedTranscript === 'raw'}
-                        isClickable={isAccordionMode}
-                        onToggle={() => handleToggleTranscript('raw')}
-                    />}
-                    {(isProcessing || (processStage === 'completed' && (outputPreference === 'cleaned' || outputPreference === 'both'))) && <TranscriptDisplay 
-                        title={`Texto Formatado (${languageMap[preferredLanguage]})`}
-                        text={cleanedTranscript}
-                        isLoading={processStage === 'cleaning'}
-                        isComplete={processStage === 'completed' && cleanedTranscript.length > 0}
-                        placeholder={processStage === 'cleaning' || processStage === 'completed' ? "A aguardar pela otimização..." : "O resultado aparecerá aqui."}
-                        renderAsHTML={true}
-                        isExpanded={!isAccordionMode || expandedTranscript === 'cleaned'}
-                        isClickable={isAccordionMode}
-                        onToggle={() => handleToggleTranscript('cleaned')}
-                    />}
-                     {(advancedTranscript || isRefining) && (
-                        <TranscriptDisplay 
-                            title={advancedTranscriptTitle || 'Documento Refinado'}
-                            text={advancedTranscript}
-                            isLoading={isRefining}
-                            isComplete={!isRefining && advancedTranscript.length > 0}
-                            placeholder="O resultado do refinamento aparecerá aqui."
-                            renderAsHTML={true}
-                            isExpanded={true}
-                            isClickable={false}
-                            onToggle={() => {}}
-                        />
-                    )}
-                </div>
-            )}
-
-            {processStage === 'completed' && (
-              <>
-                <div className="mt-12 flex flex-col sm:flex-row items-center justify-center gap-4 animate-fade-in-up">
-                    {(!currentTranscriptionId && rawTranscript) && (
-                        <button
-                            onClick={handleSaveTranscription}
-                            disabled={isSaving}
-                            className="w-full sm:w-auto flex items-center justify-center gap-2 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-semibold py-3 px-8 rounded-lg shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isSaving ? <Loader className="w-5 h-5" /> : <SaveIcon className="w-5 h-5" />}
-                            <span>{isSaving ? 'A Guardar...' : 'Guardar Transcrição'}</span>
-                        </button>
-                    )}
-                    {currentTranscriptionId && (
-                        <div className="flex items-center gap-2 text-green-700 dark:text-green-400 font-semibold py-3 px-8 rounded-lg bg-green-100 dark:bg-green-900/50">
-                            <CheckIcon className="w-5 h-5" />
-                            <span>Guardado com Sucesso</span>
-                        </div>
-                    )}
-                    <button
-                        onClick={handleReset}
-                        className="w-full sm:w-auto flex items-center justify-center gap-2 border border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 font-semibold py-3 px-8 rounded-lg shadow-sm hover:bg-gray-100 dark:hover:bg-gray-700 transition-all"
-                    >
-                        <ReloadIcon className="w-5 h-5" />
-                        <span>Transcrever Novo Ficheiro</span>
-                    </button>
-                </div>
-                <div className="mt-4 text-center">
-                    <button
-                        onClick={() => {
-                            if (isFeatureLocked) {
-                                let lockMessage;
-                                if (isTrialExpiredLocked) {
-                                    lockMessage = <>O seu período de teste terminou. Para aceder a esta funcionalidade, é necessário fazer um upgrade.</>;
-                                } else if (isTrialUploadsLocked) {
-                                    lockMessage = <>Atingiu o limite de ficheiros do seu plano Trial. Para usar esta funcionalidade, faça um upgrade.</>;
-                                } else {
-                                    lockMessage = <>O seu limite de utilização mensal foi atingido. Para continuar a usar as funcionalidades, é necessário fazer um upgrade.</>;
-                                }
-                                setError(lockMessage);
-                                window.scrollTo(0, 0);
-                                return;
-                            }
-                            
-                            const canAccessPremium = currentUser?.plan === 'premium';
-
-                            if (!canAccessPremium) {
-                                setError(
-                                    <>
-                                        O Refinamento Avançado é uma funcionalidade exclusiva do plano Premium.
-                                    </>
-                                );
-                                window.scrollTo(0, 0);
-                            } else {
-                                setIsRefineModalOpen(true);
-                            }
-                        }}
-                        className="font-bold text-[#24a9c5] hover:underline focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] dark:focus:ring-offset-gray-900 rounded-md p-1"
-                    >
-                        ou faça um Refinamento Avançado
-                    </button>
-                </div>
-              </>
-            )}
+            <TranscriptionWorkspace 
+              state={state} 
+              dispatch={dispatch} 
+              userStatus={userStatus} 
+              recentHistorySection={recentHistorySection}
+              onFileReady={stopNowPlaying}
+            />
           </main>
         );
     }
@@ -1364,24 +658,18 @@ const App: React.FC = () => {
     return <DesktopNotice />;
   }
 
+  const preferredLanguage = (profile?.preferences as any)?.language || 'pt';
+
   return (
     <>
       {processingLog && <ProcessingLogOverlay steps={processingLog.steps} currentStep={processingLog.currentStep} />}
       <div className={`min-h-screen flex flex-col transition-opacity duration-500 ease-in-out ${isAppVisible ? 'opacity-100' : 'opacity-0'} ${nowPlaying ? 'pb-24 sm:pb-20' : ''}`}>
-        {session && currentUser && (
+        {session && profile && (
           <Header 
             page={page} 
-            theme={theme} 
-            setTheme={handleSetTheme} 
-            preferredLanguage={preferredLanguage} 
-            setPreferredLanguage={handleSetPreferredLanguage}
-            preferredRecordingQuality={preferredRecordingQuality}
-            setRecordingQuality={handleSetRecordingQuality}
-            currentUser={currentUser}
-            onLogout={signOut}
+            preferredLanguage={preferredLanguage}
             onSearchClick={() => setIsSearchOpen(true)}
-            onHomeReset={handleReset}
-            monthlyUsage={monthlyUsage}
+            onHomeReset={resetWorkspace}
           />
         )}
         {renderPage()}
@@ -1397,16 +685,15 @@ const App: React.FC = () => {
         <NowPlayingBar 
           audio={nowPlaying} 
           audioUrl={nowPlayingUrl} 
-          onClose={handleCloseNowPlaying} 
+          onClose={() => {
+              if (nowPlayingUrl) URL.revokeObjectURL(nowPlayingUrl);
+              setNowPlaying(null);
+              setNowPlayingUrl(null);
+          }}
         />
       )}
-       <RefineModal
-        isOpen={isRefineModalOpen}
-        onClose={() => setIsRefineModalOpen(false)}
-        onSubmit={handleRefine}
-        isRefining={isRefining}
-      />
       <SearchModal isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+      {showUpdatePrompt && <UpdateNotification onUpdate={handleUpdateAvailable} onClose={() => setShowUpdatePrompt(false)} />}
     </>
   );
 };
