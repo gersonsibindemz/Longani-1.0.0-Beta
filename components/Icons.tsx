@@ -45,8 +45,9 @@ export const ClipboardIcon: React.FC<{className?: string}> = ({className}) => (
   </span>
 );
 
-export const CheckIcon: React.FC<{className?: string}> = ({className}) => (
-  <span className={`inline-block ${className || ''}`}>
+// Fix: Update CheckIcon to accept standard HTML attributes like 'title'.
+export const CheckIcon: React.FC<React.HTMLAttributes<HTMLSpanElement>> = ({className, ...rest}) => (
+  <span className={`inline-block ${className || ''}`} {...rest}>
     <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg" viewBox="-1 -1 26 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" overflow="visible">
         <polyline points="20 6 9 17 4 12" />
     </svg>
