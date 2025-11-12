@@ -1,15 +1,32 @@
 // Replaced deprecated `GenerateContentRequest` with `GenerateContentParameters`.
 import { GoogleGenAI, GenerateContentParameters } from "@google/genai";
 
-if (!process.env.API_KEY) {
-    throw new Error("API_KEY environment variable not set.");
-}
-
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export type RefineContentType = 'meeting' | 'sermon' | 'interview' | 'lecture' | 'note';
 export type RefineOutputFormat = 'report' | 'article' | 'key-points' | 'action-items' | 'meeting-report';
 export type PreferredLanguage = 'pt' | 'en';
+
+let ai: GoogleGenAI | null = null;
+
+/**
+ * Lazily initializes and returns the GoogleGenAI client.
+ * This prevents the app from crashing on startup if the API key is not yet available,
+ * making the application more resilient for deployments (e.g., on Vercel).
+ * @returns The initialized GoogleGenAI client instance.
+ * @throws An error if the API key is not configured in the environment variables.
+ */
+const getAiClient = (): GoogleGenAI => {
+    if (ai) {
+        return ai;
+    }
+
+    if (!process.env.API_KEY) {
+        throw new Error("A chave de API do Gemini (API_KEY) não está configurada no ambiente.");
+    }
+
+    ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    return ai;
+};
+
 
 /**
  * A generic function to handle streaming content generation from the Gemini API.
@@ -20,7 +37,8 @@ export type PreferredLanguage = 'pt' | 'en';
 // Replaced deprecated `GenerateContentRequest` with `GenerateContentParameters`.
 async function* generateStream(request: GenerateContentParameters): AsyncGenerator<string> {
     try {
-        const responseStream = await ai.models.generateContentStream(request);
+        const client = getAiClient();
+        const responseStream = await client.models.generateContentStream(request);
         for await (const chunk of responseStream) {
             // Ensure we only yield non-empty text parts
             if (chunk.text) {
@@ -175,7 +193,8 @@ export async function detectLanguage(audioBase64: string, audioMimeType: string)
     const prompt = "Detect the primary spoken language(s) in this audio. List all languages if multiple are present. Respond only with the language names, capitalized and separated by a comma and space if more than one (e.g., 'Portuguese', or 'Portuguese, English'). Do not add any other text.";
 
     try {
-        const response = await ai.models.generateContent({
+        const client = getAiClient();
+        const response = await client.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: [{ parts: [audioPart, { text: prompt }] }],
             config: {
