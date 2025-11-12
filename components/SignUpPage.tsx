@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { Loader } from './Loader';
 import { longaniLogoUrl } from './Header';
 import { useAuth } from '../contexts/AuthContext';
-import { EyeIcon, EyeOffIcon } from './Icons';
+import { EyeIcon, EyeOffIcon, GoogleIcon } from './Icons';
 
 export const SignUpPage: React.FC = () => {
-  const { signUp, signOut } = useAuth();
+  const { signUp, signOut, signInWithGoogle } = useAuth();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -74,6 +74,17 @@ export const SignUpPage: React.FC = () => {
         window.location.hash = '#/login';
     }
   };
+
+  const handleGoogleSignUp = async () => {
+    setIsLoading(true);
+    setError(null);
+    const { error: googleError } = await signInWithGoogle();
+    if (googleError) {
+        setError(googleError.message);
+        setIsLoading(false);
+    }
+    // On success, AuthContext listener handles redirect
+  };
   
   const handleNavClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     event.preventDefault();
@@ -87,6 +98,30 @@ export const SignUpPage: React.FC = () => {
         <img src={longaniLogoUrl} alt="Longani Logo" className="h-24 mx-auto mb-4 pointer-events-none" />
         <div className="bg-white/60 dark:bg-gray-800/60 rounded-2xl shadow-lg p-6 md:p-8 border border-gray-200 dark:border-gray-700 backdrop-blur-sm">
           <h1 className="text-2xl font-bold text-center text-gray-800 dark:text-gray-200 mb-6">Criar a sua conta</h1>
+
+            <div className="space-y-4">
+                <button
+                    type="button"
+                    onClick={handleGoogleSignUp}
+                    disabled={isLoading}
+                    className="w-full flex justify-center items-center gap-3 py-2.5 px-4 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#24a9c5] disabled:opacity-50 transition-colors"
+                >
+                    <GoogleIcon className="w-5 h-5" />
+                    <span>Continuar com o Google</span>
+                </button>
+            </div>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                <div className="w-full border-t border-gray-300 dark:border-gray-600" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="bg-white/60 dark:bg-gray-800/60 px-2 text-gray-500 dark:text-gray-400">
+                  OU
+                </span>
+              </div>
+            </div>
+
           <form onSubmit={handleSignUp} noValidate>
             <div className="space-y-4">
               <div>
